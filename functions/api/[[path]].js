@@ -21,7 +21,7 @@ export async function onRequest(context) {
   
   const headers = { 'Content-Type': 'application/json', 'User-Agent': 'AK-Scheduler/1.0' };
   const cred = request.headers.get('cred');
-  if (cred) headers['cred'] = cred;
+  if (cred) headers['Cred'] = cred;
   const ts = request.headers.get('Timestamp');
   if (ts) headers['Timestamp'] = ts;
   const sign = request.headers.get('Sign');
