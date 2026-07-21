@@ -19,13 +19,13 @@ export async function onRequest(context) {
     return new Response('Not Found', { status: 404 });
   }
   
-  const headers = { 'Content-Type': 'application/json', 'User-Agent': 'AK-Scheduler/1.0' };
-  const cred = request.headers.get('cred');
-  if (cred) headers['Cred'] = cred;
-  const ts = request.headers.get('Timestamp');
-  if (ts) headers['Timestamp'] = ts;
-  const sign = request.headers.get('Sign');
-  if (sign) headers['Sign'] = sign;
+  // 透传前端发来的所有header（以cred/sign/platform/timestamp/dId/vName为主）
+  const fwdHeaders = ['cred', 'sign', 'platform', 'timestamp', 'dId', 'vName'];
+  const headers = { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; AK-Scheduler/1.0)' };
+  for (const h of fwdHeaders) {
+    const val = request.headers.get(h);
+    if (val) headers[h] = val;
+  }
   
   try {
     const body = request.method === 'GET' ? undefined : await request.text();
