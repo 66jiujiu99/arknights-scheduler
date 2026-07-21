@@ -1,243 +1,247 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>罗德岛智能排班系统</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:linear-gradient(135deg,#0a0a1a 0%,#1a1a3e 50%,#0d0d2b 100%);color:#e0e0e0;font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;min-height:100vh}
-.page{max-width:600px;margin:0 auto;padding:30px 16px 60px}
-.logo{text-align:center;margin-bottom:24px;position:relative}
-.logo::before{content:'◇';position:absolute;top:-8px;left:50%;transform:translateX(-50%);font-size:48px;color:#d4a843;opacity:.15}
-.logo h1{color:#d4a843;font-size:22px;letter-spacing:3px;text-shadow:0 0 20px rgba(212,168,67,.2)}
-.logo p{color:#666;font-size:12px;margin-top:4px;letter-spacing:1px}
-.card{background:rgba(22,33,62,.85);border-radius:12px;border:1px solid rgba(42,58,94,.6);padding:24px;margin-bottom:14px;backdrop-filter:blur(10px)}
-.card h2{font-size:14px;color:#d4a843;margin-bottom:12px;display:flex;align-items:center;gap:8px;letter-spacing:.5px}
-.steps{background:rgba(15,22,41,.6);border-radius:8px;padding:12px 14px;font-size:12.5px;color:#bbb;line-height:1.8;margin-bottom:14px;border:1px solid rgba(42,58,94,.3)}
-.steps strong{color:#d4a843}
-.steps code{display:block;background:#0a0a1a;padding:8px 10px;border-radius:6px;font-size:11.5px;color:#6bb5ff;word-break:break-all;margin:6px 0;border:1px solid rgba(42,58,94,.3)}
-.steps a{color:#6bb5ff;text-decoration:none}
-.steps a:hover{text-decoration:underline}
-label{display:block;font-size:12px;color:#888;margin-bottom:5px;letter-spacing:.5px}
-input{width:100%;padding:10px 14px;background:rgba(15,22,41,.8);border:1px solid rgba(42,58,94,.5);border-radius:8px;color:#e0e0e0;font-size:13px;outline:none;transition:all .2s}
-input:focus{border-color:rgba(212,168,67,.5);box-shadow:0 0 12px rgba(212,168,67,.08)}
-.btn{width:100%;padding:11px;border:none;border-radius:8px;font-size:13px;cursor:pointer;transition:all .2s;margin-top:4px;letter-spacing:1px}
-.btn-primary{background:linear-gradient(135deg,#d4a843,#c49430);color:#0a0a1a;font-weight:700}
-.btn-primary:hover{opacity:.92;transform:translateY(-1px);box-shadow:0 4px 16px rgba(212,168,67,.25)}
-.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
-.status{padding:10px 14px;border-radius:6px;font-size:12.5px;margin-top:10px;display:none;animation:fadeIn .3s}
-.status.error{display:block;background:rgba(61,26,26,.7);border:1px solid rgba(107,42,42,.5);color:#ff6b6b}
-.status.success{display:block;background:rgba(26,61,26,.7);border:1px solid rgba(42,107,42,.5);color:#5ddf5d}
-.status.info{display:block;background:rgba(26,42,61,.7);border:1px solid rgba(42,74,107,.5);color:#6bb5ff}
-@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
-.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(10,10,26,.3);border-top-color:#0a0a1a;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
-@keyframes spin{to{transform:rotate(360deg)}}
-.result{display:none;margin-top:12px;animation:fadeIn .4s}
-.result.show{display:block}
-.pre-wrap{background:rgba(15,22,41,.6);padding:10px;border-radius:6px;font-size:11px;color:#6bb5ff;overflow-x:auto;max-height:140px;border:1px solid rgba(42,58,94,.3)}
-.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
-.stat-item{background:rgba(15,22,41,.6);border-radius:8px;padding:12px 8px;text-align:center;border:1px solid rgba(42,58,94,.3)}
-.stat-num{font-size:22px;font-weight:700;color:#d4a843}
-.stat-label{font-size:10.5px;color:#777;margin-top:2px;letter-spacing:.5px}
-.table-wrap{max-height:320px;overflow-y:auto;border-radius:8px;border:1px solid rgba(42,58,94,.3)}
-.table-wrap::-webkit-scrollbar{width:4px}
-.table-wrap::-webkit-scrollbar-track{background:transparent}
-.table-wrap::-webkit-scrollbar-thumb{background:rgba(212,168,67,.3);border-radius:2px}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th{text-align:left;padding:8px 10px;background:rgba(15,22,41,.8);color:#d4a843;font-weight:600;position:sticky;top:0;z-index:1;border-bottom:1px solid rgba(42,58,94,.5);letter-spacing:.5px}
-td{padding:7px 10px;border-bottom:1px solid rgba(42,58,94,.15)}
-tr:hover td{background:rgba(212,168,67,.04)}
-.rarity6{color:#ff6b35;font-weight:600}.rarity5{color:#d4a843}.rarity4{color:#aa88ff}.rarity3{color:#88ccff}.rarity2{color:#88dd88}.rarity1{color:#aaa}
-.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:4px;vertical-align:middle}
-.tag-6{background:rgba(255,107,53,.15);color:#ff6b35}
-.tag-5{background:rgba(212,168,67,.15);color:#d4a843}
-.tag-4{background:rgba(170,136,255,.15);color:#aa88ff}
-.tag-3{background:rgba(136,204,255,.15);color:#88ccff}
-.tag-2{background:rgba(136,221,136,.15);color:#88dd88}
-.tag-1{background:rgba(170,170,170,.15);color:#aaa}
-.elite-badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;background:rgba(42,58,94,.4);color:#888}
-.shift-tabs{display:flex;gap:6px;margin-bottom:10px}
-.shift-tab{padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;background:rgba(15,22,41,.6);border:1px solid rgba(42,58,94,.3);color:#888;transition:all .2s}
-.shift-tab.active{background:rgba(212,168,67,.15);border-color:rgba(212,168,67,.4);color:#d4a843}
-.facility-card{background:rgba(15,22,41,.6);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid rgba(42,58,94,.3)}
-.facility-card h4{font-size:12px;color:#d4a843;margin-bottom:6px}
-.facility-card .slot{display:flex;align-items:center;gap:6px;padding:3px 6px;margin:2px 0;font-size:11px;border-radius:4px}
-.facility-card .slot .name{flex:1;color:#e0e0e0}
-.facility-card .slot .eff{color:#6bb5ff;font-size:10px}
-.facility-card .slot .eff-good{color:#5ddf5d}
-.eff-total{text-align:center;font-size:13px;color:#d4a843;padding:8px;margin-top:8px;background:rgba(212,168,67,.06);border-radius:6px}
-.footer{text-align:center;font-size:11px;color:#555;margin-top:32px;letter-spacing:.5px}
-</style>
-</head>
-<body>
-<div class="page">
-  <div class="logo">
-    <h1>◇ 罗德岛智能排班系统</h1>
-    <p>基于森空岛 API · 数据本地存储</p>
+1|<!DOCTYPE html>
+2|<html lang="zh-CN">
+3|<head>
+4|<meta charset="UTF-8"/>
+5|<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+6|<title>罗德岛智能排班系统</title>
+7|<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+8|<style>
+9|*{margin:0;padding:0;box-sizing:border-box}
+10|body{background:linear-gradient(135deg,#0a0a1a 0%,#1a1a3e 50%,#0d0d2b 100%);color:#e0e0e0;font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;min-height:100vh}
+11|.page{max-width:600px;margin:0 auto;padding:30px 16px 60px}
+12|.logo{text-align:center;margin-bottom:24px;position:relative}
+13|.logo::before{content:'◇';position:absolute;top:-8px;left:50%;transform:translateX(-50%);font-size:48px;color:#d4a843;opacity:.15}
+14|.logo h1{color:#d4a843;font-size:22px;letter-spacing:3px;text-shadow:0 0 20px rgba(212,168,67,.2)}
+15|.logo p{color:#666;font-size:12px;margin-top:4px;letter-spacing:1px}
+16|.card{background:rgba(22,33,62,.85);border-radius:12px;border:1px solid rgba(42,58,94,.6);padding:24px;margin-bottom:14px;backdrop-filter:blur(10px)}
+17|.card h2{font-size:14px;color:#d4a843;margin-bottom:12px;display:flex;align-items:center;gap:8px;letter-spacing:.5px}
+18|.steps{background:rgba(15,22,41,.6);border-radius:8px;padding:12px 14px;font-size:12.5px;color:#bbb;line-height:1.8;margin-bottom:14px;border:1px solid rgba(42,58,94,.3)}
+19|.steps strong{color:#d4a843}
+20|.steps code{display:block;background:#0a0a1a;padding:8px 10px;border-radius:6px;font-size:11.5px;color:#6bb5ff;word-break:break-all;margin:6px 0;border:1px solid rgba(42,58,94,.3)}
+21|.steps a{color:#6bb5ff;text-decoration:none}
+22|.steps a:hover{text-decoration:underline}
+23|label{display:block;font-size:12px;color:#888;margin-bottom:5px;letter-spacing:.5px}
+24|input{width:100%;padding:10px 14px;background:rgba(15,22,41,.8);border:1px solid rgba(42,58,94,.5);border-radius:8px;color:#e0e0e0;font-size:13px;outline:none;transition:all .2s}
+25|input:focus{border-color:rgba(212,168,67,.5);box-shadow:0 0 12px rgba(212,168,67,.08)}
+26|.btn{width:100%;padding:11px;border:none;border-radius:8px;font-size:13px;cursor:pointer;transition:all .2s;margin-top:4px;letter-spacing:1px}
+27|.btn-primary{background:linear-gradient(135deg,#d4a843,#c49430);color:#0a0a1a;font-weight:700}
+28|.btn-primary:hover{opacity:.92;transform:translateY(-1px);box-shadow:0 4px 16px rgba(212,168,67,.25)}
+29|.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+30|.status{padding:10px 14px;border-radius:6px;font-size:12.5px;margin-top:10px;display:none;animation:fadeIn .3s}
+31|.status.error{display:block;background:rgba(61,26,26,.7);border:1px solid rgba(107,42,42,.5);color:#ff6b6b}
+32|.status.success{display:block;background:rgba(26,61,26,.7);border:1px solid rgba(42,107,42,.5);color:#5ddf5d}
+33|.status.info{display:block;background:rgba(26,42,61,.7);border:1px solid rgba(42,74,107,.5);color:#6bb5ff}
+34|@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+35|.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(10,10,26,.3);border-top-color:#0a0a1a;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+36|@keyframes spin{to{transform:rotate(360deg)}}
+37|.result{display:none;margin-top:12px;animation:fadeIn .4s}
+38|.result.show{display:block}
+39|.pre-wrap{background:rgba(15,22,41,.6);padding:10px;border-radius:6px;font-size:11px;color:#6bb5ff;overflow-x:auto;max-height:140px;border:1px solid rgba(42,58,94,.3)}
+40|.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+41|.stat-item{background:rgba(15,22,41,.6);border-radius:8px;padding:12px 8px;text-align:center;border:1px solid rgba(42,58,94,.3)}
+42|.stat-num{font-size:22px;font-weight:700;color:#d4a843}
+43|.stat-label{font-size:10.5px;color:#777;margin-top:2px;letter-spacing:.5px}
+44|.table-wrap{max-height:320px;overflow-y:auto;border-radius:8px;border:1px solid rgba(42,58,94,.3)}
+45|.table-wrap::-webkit-scrollbar{width:4px}
+46|.table-wrap::-webkit-scrollbar-track{background:transparent}
+47|.table-wrap::-webkit-scrollbar-thumb{background:rgba(212,168,67,.3);border-radius:2px}
+48|table{width:100%;border-collapse:collapse;font-size:12px}
+49|th{text-align:left;padding:8px 10px;background:rgba(15,22,41,.8);color:#d4a843;font-weight:600;position:sticky;top:0;z-index:1;border-bottom:1px solid rgba(42,58,94,.5);letter-spacing:.5px}
+50|td{padding:7px 10px;border-bottom:1px solid rgba(42,58,94,.15)}
+51|tr:hover td{background:rgba(212,168,67,.04)}
+52|.rarity6{color:#ff6b35;font-weight:600}.rarity5{color:#d4a843}.rarity4{color:#aa88ff}.rarity3{color:#88ccff}.rarity2{color:#88dd88}.rarity1{color:#aaa}
+53|.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:4px;vertical-align:middle}
+54|.tag-6{background:rgba(255,107,53,.15);color:#ff6b35}
+55|.tag-5{background:rgba(212,168,67,.15);color:#d4a843}
+56|.tag-4{background:rgba(170,136,255,.15);color:#aa88ff}
+57|.tag-3{background:rgba(136,204,255,.15);color:#88ccff}
+58|.tag-2{background:rgba(136,221,136,.15);color:#88dd88}
+59|.tag-1{background:rgba(170,170,170,.15);color:#aaa}
+60|.elite-badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;background:rgba(42,58,94,.4);color:#888}
+61|.shift-tabs{display:flex;gap:6px;margin-bottom:10px}
+62|.shift-tab{padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;background:rgba(15,22,41,.6);border:1px solid rgba(42,58,94,.3);color:#888;transition:all .2s}
+63|.shift-tab.active{background:rgba(212,168,67,.15);border-color:rgba(212,168,67,.4);color:#d4a843}
+64|.facility-card{background:rgba(15,22,41,.6);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid rgba(42,58,94,.3)}
+65|.facility-card h4{font-size:12px;color:#d4a843;margin-bottom:6px}
+66|.facility-card .slot{display:flex;align-items:center;gap:6px;padding:3px 6px;margin:2px 0;font-size:11px;border-radius:4px}
+67|.facility-card .slot .name{flex:1;color:#e0e0e0}
+68|.facility-card .slot .eff{color:#6bb5ff;font-size:10px}
+69|.facility-card .slot .eff-good{color:#5ddf5d}
+70|.eff-total{text-align:center;font-size:13px;color:#d4a843;padding:8px;margin-top:8px;background:rgba(212,168,67,.06);border-radius:6px}
+71|.footer{text-align:center;font-size:11px;color:#555;margin-top:32px;letter-spacing:.5px}
+72|</style>
+73|</head>
+74|<body>
+75|<div class="page">
+76|  <div class="logo">
+77|    <h1>◇ 罗德岛智能排班系统</h1>
+78|    <p>基于森空岛 API · 数据本地存储</p>
+79|  </div>
+80|  
+81|  <div class="card">
+82|    <h2>🔐 登录</h2>
+83|    <div class="steps">
+84|      <strong>一步获取凭证</strong><br>
+85|      1. 打开 <a href="https://www.skland.com" target="_blank" style="color:#5398ff">森空岛官网</a> 并登录<br>
+86|      2. F12 → Console → 粘贴以下命令回车：<br>
+87|      <code>copy(localStorage.getItem('SK_OAUTH_CRED_KEY'))</code>
+88|      3. 回到本页粘贴到下方输入框
+89|    </div>
+90|    <label>Credential</label>
+91|    <input id="credInput" placeholder="粘贴从森空岛复制的 cred"/>
+92|    <button id="loginBtn" class="btn btn-primary" type="button">获取干员数据</button>
+93|    <div id="status" class="status"></div>
+94|  </div>
+95|  
+96|  <div id="resultCard" class="card result">
+97|    <h2>📊 数据概览</h2>
+98|    <div id="stats" class="stat-grid"></div>
+99|    <h2 style="margin-top:14px">🧑‍✈️ 干员列表</h2>
+100|    <div class="table-wrap" id="tableWrap"></div>
+101|  </div>
+102|  
+<div id="scheduleCard" class="card">
+  <h2>📋 智能排班</h2>
+  <div class="mf-config" id="mfConfig" style="margin-bottom:10px">
+    <div style="font-size:11px;color:#888;margin-bottom:4px">🏭 制造站产物配置（点击切换）</div>
+    <div id="mfConfigRow" style="display:flex;gap:4px;flex-wrap:wrap"></div>
   </div>
-  
-  <div class="card">
-    <h2>🔐 登录</h2>
-    <div class="steps">
-      <strong>一步获取凭证</strong><br>
-      1. 打开 <a href="https://www.skland.com" target="_blank" style="color:#5398ff">森空岛官网</a> 并登录<br>
-      2. F12 → Console → 粘贴以下命令回车：<br>
-      <code>copy(localStorage.getItem('SK_OAUTH_CRED_KEY'))</code>
-      3. 回到本页粘贴到下方输入框
-    </div>
-    <label>Credential</label>
-    <input id="credInput" placeholder="粘贴从森空岛复制的 cred"/>
-    <button id="loginBtn" class="btn btn-primary" type="button">获取干员数据</button>
-    <div id="status" class="status"></div>
-  </div>
-  
-  <div id="resultCard" class="card result">
-    <h2>📊 数据概览</h2>
-    <div id="stats" class="stat-grid"></div>
-    <h2 style="margin-top:14px">🧑‍✈️ 干员列表</h2>
-    <div class="table-wrap" id="tableWrap"></div>
-  </div>
-  
-  <div id="scheduleCard" class="card">
-    <h2>📋 智能排班</h2>
-    <button id="scheduleBtn" class="btn btn-primary" type="button" style="margin-bottom:12px" onclick="runSchedule()">⚡ 生成排班表</button>
-    <div id="scheduleResult"></div>
-  </div>
-  <div class="footer">数据仅存于本地浏览器 · 罗德岛智能排班系统</div>
-</div>
-
-<script>
-function sign(path, params, token) {
-  const ts = String(Math.floor((Date.now() - 300) / 1000))
-  const headers = {
-    platform: '3',
-    timestamp: ts,
-    dId: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0',
-    vName: '1.2.0'
-  }
-  const text = path + (params||'') + ts + JSON.stringify(headers)
-  const hmacHex = CryptoJS.HmacSHA256(text, token).toString()
-  const sign = CryptoJS.MD5(hmacHex).toString()
-  return { timestamp: ts, sign, headers }
-}
-
-async function api(url, headers) {
-  const r = await fetch(url, { headers })
-  const t = await r.text()
-  try { return JSON.parse(t) } catch { return { code: -1, message: t.slice(0,200) } }
-}
-
-function showStatus(type, msg) {
-  const el = document.getElementById('status')
-  el.className = 'status ' + type
-  el.innerHTML = msg
-}
-
-const rarityClass = ['','','','rarity4','rarity5','rarity6']
-const rarityLabel = ['','','','★4','★5','★6']
-
-async function login() {
-  const btn = document.getElementById('loginBtn')
-  const cred = document.getElementById('credInput').value.trim()
-  if (!cred) { showStatus('error', '请输入credential'); return }
-  
-  btn.disabled = true
-  btn.innerHTML = '<span class="spinner"></span>获取中...'
-  
-  try {
-    showStatus('info', '正在连接森空岛...')
-    const r1 = await api('/api/sw/v1/auth/refresh', { cred })
-    if (r1.code !== 0) throw new Error('刷新token失败: ' + (r1.message || ''))
-    const token = r1.data.token
-    
-    showStatus('info', '已获取签名token...')
-    
-    const s1 = sign('/api/v1/game/player/binding', '', token)
-    const r2 = await api('/api/sk/v1/game/player/binding', { cred, ...s1.headers, sign: s1.sign })
-    if (r2.code !== 0) throw new Error('获取绑定失败: ' + (r2.message || ''))
-    
-    let uid = '0', nick = ''
-    for (const a of (r2.data?.list||[])) {
-      if (a.appCode === 'arknights') {
-        uid = a.bindingList[0].uid
-        nick = a.bindingList[0].nickName || ''
-        break
-      }
-    }
-    if (uid === '0') throw new Error('未找到明日方舟角色绑定')
-    showStatus('info', 'UID: ' + uid)
-    
-    const s2 = sign('/api/v1/game/player/info', 'uid='+uid, token)
-    const r3 = await api('/api/sk/v1/game/player/info?uid='+uid, { cred, ...s2.headers, sign: s2.sign })
-    if (r3.code !== 0) throw new Error('获取数据失败: ' + (r3.message || ''))
-    
-    const d = r3.data
-    const chars = d.chars || []
-    const building = d.building || {}
-    const charInfoMap = d.charInfoMap || {}
-    
-    showStatus('success', '✅ 获取成功！' + chars.length + '名干员')
-    
-    // 统计
-    const stats = document.getElementById('stats')
-    stats.innerHTML = '' +
-      '<div class="stat-item"><div class="stat-num">' + chars.length + '</div><div class="stat-label">干员</div></div>' +
-      '<div class="stat-item"><div class="stat-num">' + (d.status?.level||'?') + '</div><div class="stat-label">博士等级</div></div>' +
-      '<div class="stat-item"><div class="stat-num">' + ((building.manufactures||[]).length) + '</div><div class="stat-label">制造站</div></div>'
-    
-    // 干员表格
-    let html = '<table><thead><tr><th>名字</th><th>星级</th><th>等级</th><th>精英</th></tr></thead><tbody>'
-    for (const c of chars) {
-      const id = c.id || c.charId
-      const info = charInfoMap[id]
-      const name = info?.name || id
-      const rarity = c.rarity || info?.rarity || 1
-      const cls = 'rarity' + rarity
-      const tagCls = 'tag tag-' + rarity
-      html += '<tr><td class="' + cls + '">' + name + '</td>' +
-        '<td><span class="' + tagCls + '">★' + rarity + '</span></td>' +
-        '<td>' + (c.level||'?') + '</td>' +
-        '<td><span class="elite-badge">' + ('精英' + (c.evolvePhase||0)) + '</span></td></tr>'
-    }
-    html += '</tbody></table>'
-    document.getElementById('tableWrap').innerHTML = html
-    document.getElementById('resultCard').classList.add('show')
-    document.getElementById('scheduleCard').classList.add('show')
-    
-    // 存数据
-    localStorage.setItem('ak_user_data', JSON.stringify({
-      nickname: d.status?.nickName || nick || '博士',
-      level: d.status?.level || 0,
-      uid,
-      chars: chars.map(c => {
-        const id = c.id||c.charId
-        const info = charInfoMap[id]
-        return {
-          charId: id,
-          name: info?.name || id,
-          rarity: c.rarity || info?.rarity || 1,
-          level: c.level||1,
-          elite: c.evolvePhase||0,
-          potential: Math.ceil((c.potentialRank||0)+1),
-          own: true,
-        }
-      }),
-      building: { manufactures: building.manufactures||[], tradings: building.tradings||[], dormitories: building.dormitories||[], power: building.power||null, meeting: building.meeting||null, training: building.training||null, tiredChars: building.tiredChars||[], labor: building.labor||{} },
-      charInfoMap: Object.fromEntries(Object.entries(charInfoMap).map(([k,v]) => [k, {name: v.name, rarity: v.rarity}])),
-    }))
-    
-  } catch (e) {
-    showStatus('error', '❌ ' + e.message)
-    console.error(e)
-  } finally {
-    btn.disabled = false
-    btn.innerHTML = '获取干员数据'
-  }
-}
-
-// ===== 排班算法 v2 （重写：两班+控制中心+制造分类+联动+心情）=====
+  <button id="scheduleBtn" class="btn btn-primary" type="button" style="margin-bottom:12px" onclick="runSchedule()">⚡ 生成排班表</button>
+106|    <div id="scheduleResult"></div>
+107|  </div>
+108|  <div class="footer">数据仅存于本地浏览器 · 罗德岛智能排班系统</div>
+109|</div>
+110|
+111|<script>
+112|function sign(path, params, token) {
+113|  const ts = String(Math.floor((Date.now() - 300) / 1000))
+114|  const headers = {
+115|    platform: '3',
+116|    timestamp: ts,
+117|    dId: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0',
+118|    vName: '1.2.0'
+119|  }
+120|  const text = path + (params||'') + ts + JSON.stringify(headers)
+121|  const hmacHex = CryptoJS.HmacSHA256(text, token).toString()
+122|  const sign = CryptoJS.MD5(hmacHex).toString()
+123|  return { timestamp: ts, sign, headers }
+124|}
+125|
+126|async function api(url, headers) {
+127|  const r = await fetch(url, { headers })
+128|  const t = await r.text()
+129|  try { return JSON.parse(t) } catch { return { code: -1, message: t.slice(0,200) } }
+130|}
+131|
+132|function showStatus(type, msg) {
+133|  const el = document.getElementById('status')
+134|  el.className = 'status ' + type
+135|  el.innerHTML = msg
+136|}
+137|
+138|const rarityClass = ['','','','rarity4','rarity5','rarity6']
+139|const rarityLabel = ['','','','★4','★5','★6']
+140|
+141|async function login() {
+142|  const btn = document.getElementById('loginBtn')
+143|  const cred = document.getElementById('credInput').value.trim()
+144|  if (!cred) { showStatus('error', '请输入credential'); return }
+145|  
+146|  btn.disabled = true
+147|  btn.innerHTML = '<span class="spinner"></span>获取中...'
+148|  
+149|  try {
+150|    showStatus('info', '正在连接森空岛...')
+151|    const r1 = await api('/api/sw/v1/auth/refresh', { cred })
+152|    if (r1.code !== 0) throw new Error('刷新token失败: ' + (r1.message || ''))
+153|    const token = r1.data.token
+154|    
+155|    showStatus('info', '已获取签名token...')
+156|    
+157|    const s1 = sign('/api/v1/game/player/binding', '', token)
+158|    const r2 = await api('/api/sk/v1/game/player/binding', { cred, ...s1.headers, sign: s1.sign })
+159|    if (r2.code !== 0) throw new Error('获取绑定失败: ' + (r2.message || ''))
+160|    
+161|    let uid = '0', nick = ''
+162|    for (const a of (r2.data?.list||[])) {
+163|      if (a.appCode === 'arknights') {
+164|        uid = a.bindingList[0].uid
+165|        nick = a.bindingList[0].nickName || ''
+166|        break
+167|      }
+168|    }
+169|    if (uid === '0') throw new Error('未找到明日方舟角色绑定')
+170|    showStatus('info', 'UID: ' + uid)
+171|    
+172|    const s2 = sign('/api/v1/game/player/info', 'uid='+uid, token)
+173|    const r3 = await api('/api/sk/v1/game/player/info?uid='+uid, { cred, ...s2.headers, sign: s2.sign })
+174|    if (r3.code !== 0) throw new Error('获取数据失败: ' + (r3.message || ''))
+175|    
+176|    const d = r3.data
+177|    const chars = d.chars || []
+178|    const building = d.building || {}
+179|    const charInfoMap = d.charInfoMap || {}
+180|    
+181|    showStatus('success', '✅ 获取成功！' + chars.length + '名干员')
+182|    
+183|    // 统计
+184|    const stats = document.getElementById('stats')
+185|    stats.innerHTML = '' +
+186|      '<div class="stat-item"><div class="stat-num">' + chars.length + '</div><div class="stat-label">干员</div></div>' +
+187|      '<div class="stat-item"><div class="stat-num">' + (d.status?.level||'?') + '</div><div class="stat-label">博士等级</div></div>' +
+188|      '<div class="stat-item"><div class="stat-num">' + ((building.manufactures||[]).length) + '</div><div class="stat-label">制造站</div></div>'
+189|    
+190|    // 干员表格
+191|    let html = '<table><thead><tr><th>名字</th><th>星级</th><th>等级</th><th>精英</th></tr></thead><tbody>'
+192|    for (const c of chars) {
+193|      const id = c.id || c.charId
+194|      const info = charInfoMap[id]
+195|      const name = info?.name || id
+196|      const rarity = c.rarity || info?.rarity || 1
+197|      const cls = 'rarity' + rarity
+198|      const tagCls = 'tag tag-' + rarity
+199|      html += '<tr><td class="' + cls + '">' + name + '</td>' +
+200|        '<td><span class="' + tagCls + '">★' + rarity + '</span></td>' +
+201|        '<td>' + (c.level||'?') + '</td>' +
+202|        '<td><span class="elite-badge">' + ('精英' + (c.evolvePhase||0)) + '</span></td></tr>'
+203|    }
+204|    html += '</tbody></table>'
+205|    document.getElementById('tableWrap').innerHTML = html
+206|    document.getElementById('resultCard').classList.add('show')
+207|    document.getElementById('scheduleCard').classList.add('show')
+208|    
+209|    // 存数据
+210|    localStorage.setItem('ak_user_data', JSON.stringify({
+211|      nickname: d.status?.nickName || nick || '博士',
+212|      level: d.status?.level || 0,
+213|      uid,
+214|      chars: chars.map(c => {
+215|        const id = c.id||c.charId
+216|        const info = charInfoMap[id]
+217|        return {
+218|          charId: id,
+219|          name: info?.name || id,
+220|          rarity: c.rarity || info?.rarity || 1,
+221|          level: c.level||1,
+222|          elite: c.evolvePhase||0,
+223|          potential: Math.ceil((c.potentialRank||0)+1),
+224|          own: true,
+225|        }
+226|      }),
+227|      building: { manufactures: building.manufactures||[], tradings: building.tradings||[], dormitories: building.dormitories||[], power: building.power||null, meeting: building.meeting||null, training: building.training||null, tiredChars: building.tiredChars||[], labor: building.labor||{} },
+228|      charInfoMap: Object.fromEntries(Object.entries(charInfoMap).map(([k,v]) => [k, {name: v.name, rarity: v.rarity}])),
+229|    }))
+230|    
+231|  } catch (e) {
+232|    showStatus('error', '❌ ' + e.message)
+233|    console.error(e)
+234|  } finally {
+235|    btn.disabled = false
+236|    btn.innerHTML = '获取干员数据'
+237|  }
+238|}
+239|
+240|// ===== 排班算法 v3 （全设施去重+制造配置）=====
 let ctrlOps = {}
 const FACILITY_CFG = {
   manufacture: { label:'制造站', slots:3, moodCost:0.75 },
@@ -254,50 +258,50 @@ function analyzeSkills(chars,skills){return(chars||[]).map(c=>{const sd=skills[c
   for(const[f,info]of Object.entries(sd)){if(['name','rarity'].includes(f))continue;const d=info.desc||'';fac[f]={type:info.type||'',value:info.value||0,desc:d}
   if(d.includes('心情每小时消耗')){const m=d.match(/心情每小时消耗([+-])([\d.]+)/);if(m)moods.push({facility:f,cost:parseFloat(m[1]+m[2])})}
   if(f!=='dormitory'&&(d.includes('若')||d.includes('当')||d.includes('如果')||d.includes('同个')||d.includes('额外'))){combos.push({facility:f,desc:d.slice(0,80)})
-    // 提取联动伙伴名
     const ms=d.matchAll(/([^\s<]+)(?:进驻|在|与|和|入驻)/g);for(const m of ms)if(m[1].length>1)partners.push(m[1])}
   if(f==='manufacture')mfCat=classifyMF(d)}
   return{...c,rarity:sd.rarity||c.rarity||1,baseSkills:fac,mfCat,moods,combos,partners:[...new Set(partners)]}})}
-function pickMF(type,pool,count,cat){const a=pool.filter(o=>o.baseSkills&&o.baseSkills[type]&&o.mfCat===cat).sort((a,b)=>b.baseSkills[type].value-a.baseSkills[type].value)
-  const b=pool.filter(o=>o.baseSkills&&o.baseSkills[type]&&o.mfCat!==cat).sort((a,b)=>b.baseSkills[type].value-a.baseSkills[type].value)
-  const u=new Set(),r=[];let e=0
-  for(const l of[a,b]){for(const o of l){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({name:o.name,rarity:o.rarity,skill:o.baseSkills[type],moodCost:o.moods?.find(m=>m.facility===type)});e+=o.baseSkills[type]?.value||0}}
-  for(const o of pool){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({name:o.name,rarity:o.rarity,skill:{type:'general',value:0,desc:'通用'}})}
-  while(r.length<count)r.push({name:'空位',rarity:1,skill:{type:'empty',value:0,desc:'待分配'}});return{assigned:r,efficiency:e}}
-function pickFac(type,pool,count){if(type==='control'){const sorted=[...pool].sort((a,b)=>{const aS=(ctrlOps[a.charId]?.score||0),bS=(ctrlOps[b.charId]?.score||0);if(aS!==bS)return bS-aS
+function pickMF(type,pool,count,cat,used){const a=pool.filter(o=>o.baseSkills&&o.baseSkills[type]&&o.mfCat===cat&&!used.has(o.charId)).sort((a,b)=>b.baseSkills[type].value-a.baseSkills[type].value)
+  const b=pool.filter(o=>o.baseSkills&&o.baseSkills[type]&&o.mfCat!==cat&&!used.has(o.charId)).sort((a,b)=>b.baseSkills[type].value-a.baseSkills[type].value)
+  const r=[];let e=0
+  for(const l of[a,b]){for(const o of l){if(r.length>=count)break;used.add(o.charId);r.push({charId:o.charId,name:o.name,rarity:o.rarity,skill:o.baseSkills[type],moodCost:o.moods?.find(m=>m.facility===type)});e+=o.baseSkills[type]?.value||0}}
+  for(const o of pool){if(r.length>=count)break;if(used.has(o.charId))continue;used.add(o.charId);r.push({charId:o.charId,name:o.name,rarity:o.rarity,skill:{type:'general',value:0,desc:'通用'}})}
+  while(r.length<count)r.push({charId:'empty_'+r.length,name:'空位',rarity:1,skill:{type:'empty',value:0,desc:'待分配'}});return{assigned:r,efficiency:e}}
+function pickFac(type,pool,count,used){if(type==='control'){const sorted=[...pool].sort((a,b)=>{const aS=(ctrlOps[a.charId]?.score||0),bS=(ctrlOps[b.charId]?.score||0);if(aS!==bS)return bS-aS
   const aC=a.combos?.length||0,bC=b.combos?.length||0;if(aC!==bC)return bC-aC;return b.rarity-a.rarity});return pickGeneric(sorted,count)}
-  const a=pool.filter(o=>o.baseSkills&&o.baseSkills[type]).sort((a,b)=>b.baseSkills[type].value-a.baseSkills[type].value)
-  const u=new Set(),r=[];let e=0
-  for(const o of a){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({name:o.name,rarity:o.rarity,skill:o.baseSkills[type],moodCost:o.moods?.find(m=>m.facility===type)});e+=o.baseSkills[type]?.value||0}
-  for(const o of pool){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({name:o.name,rarity:o.rarity,skill:{type:'general',value:0,desc:'通用'},moodCost:null})}
-  while(r.length<count)r.push({name:'空位',rarity:1,skill:{type:'empty',value:0,desc:'待分配'},moodCost:null});return{assigned:r,efficiency:e}}
+  const u=used||new Set();const a=pool.filter(o=>o.baseSkills&&o.baseSkills[type]&&!u.has(o.charId)).sort((a,b)=>b.baseSkills[type].value-a.baseSkills[type].value)
+  const r=[];let e=0
+  for(const o of a){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({charId:o.charId,name:o.name,rarity:o.rarity,skill:o.baseSkills[type],moodCost:o.moods?.find(m=>m.facility===type)});e+=o.baseSkills[type]?.value||0}
+  for(const o of pool){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({charId:o.charId,name:o.name,rarity:o.rarity,skill:{type:'general',value:0,desc:'通用'},moodCost:null})}
+  while(r.length<count)r.push({charId:'empty_'+r.length,name:'空位',rarity:1,skill:{type:'empty',value:0,desc:'待分配'},moodCost:null});return{assigned:r,efficiency:e}}
 function pickGeneric(pool,count){const u=new Set(),r=[];let e=0
   for(const o of pool){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({charId:o.charId,name:o.name,rarity:o.rarity,skill:{type:'general',value:0,desc:'通用'},moodCost:null});e+=0}
   for(const o of pool){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({charId:o.charId,name:o.name,rarity:o.rarity,skill:{type:'general',value:0,desc:'通用'},moodCost:null})}
   while(r.length<count)r.push({charId:'empty_'+r.length,name:'空位',rarity:1,skill:{type:'empty',value:0,desc:'待分配'},moodCost:null});return{assigned:r,efficiency:e}}
 function generateSchedule(ud,skills){const chars=analyzeSkills(ud.chars||[],skills),bld=ud.building||{}
-  const mfC=Math.max((bld.manufactures||[]).length,2),trC=Math.max((bld.tradings||[]).length,1),cats=['赤金','作战记录','源石碎片','通用','赤金']
+  const mfC=Math.max((bld.manufactures||[]).length,2),trC=Math.max((bld.tradings||[]).length,1)
+  const savedCfg=JSON.parse(localStorage.getItem('ak_mf_config')||'null')
+  const defaultCats=['赤金','作战记录','源石碎片','通用','赤金']
+  const cats=savedCfg||defaultCats
   const scs=[];for(let s=0;s<2;s++){const pool=[...chars],off=Math.floor(pool.length/2)*s,rot=[...pool.slice(off),...pool.slice(0,off)]
-    const fs={};let te=0,ctrlBonus=0
+    const fs={};let te=0,ctrlBonus=0;const used=new Set()
     fs.control=pickFac('control',chars,5)
-    // 计算控制中枢全局加成
     for(const o of fs.control.assigned||[]){const cb=ctrlOps[o.charId];if(!cb)continue
       for(const bf of cb.buffs||[]){const d=bf.desc||''
         if(d.includes('所有制造站生产力')){const m=d.match(/[\d.]+(?=%)/);if(m)ctrlBonus+=parseFloat(m[0])}
         if(d.includes('所有贸易站订单效率')){const m=d.match(/[\d.]+(?=%)/);if(m)ctrlBonus+=parseFloat(m[0])}
       }
     }
-    fs.manufacture=[];for(let m=0;m<mfC;m++){const r=pickMF('manufacture',rot,3,cats[m%cats.length]);r.label=`制造站${m+1}(${cats[m%cats.length]})`;r.ctrlBonus=ctrlBonus;te+=r.efficiency}
-    fs.trading=[];for(let t=0;t<trC;t++){const r=pickFac('trading',rot,3);r.label=`贸易站${t+1}`;r.ctrlBonus=ctrlBonus;te+=r.efficiency}
-    // 贸易站联动优化
+    fs.manufacture=[];for(let m=0;m<mfC;m++){const r=pickMF('manufacture',rot,3,cats[m]||'通用',used);r.label=`制造站${m+1}(${cats[m]||'通用'})`;r.ctrlBonus=ctrlBonus;te+=r.efficiency}
+    fs.trading=[];for(let t=0;t<trC;t++){const r=pickFac('trading',rot,3,used);r.label=`贸易站${t+1}`;r.ctrlBonus=ctrlBonus;te+=r.efficiency}
     if(fs.trading.length>1){for(let a=0;a<fs.trading.length;a++){for(let b=a+1;b<fs.trading.length;b++){
       for(const oa of fs.trading[a].assigned){for(const ob of fs.trading[b].assigned){
         if(oa.partners?.includes(ob.name)||ob.partners?.includes(oa.name)){
           const idxA=fs.trading[a].assigned.indexOf(ob),idxB=fs.trading[b].assigned.indexOf(oa)
           if(idxA>=0&&idxB>=0){const tmp=fs.trading[a].assigned[idxA];fs.trading[a].assigned[idxA]=fs.trading[b].assigned[idxB];fs.trading[b].assigned[idxB]=tmp}
     }}}}}}
-    fs.power=[];for(let p=0;p<2;p++){const r=pickFac('power',rot,2);r.label=`发电站${p+1}`;fs.power.push(r);te+=r.efficiency}
-    fs.meeting=pickFac('meeting',rot,2);fs.training=pickFac('training',rot,1)
+    fs.power=[];for(let p=0;p<2;p++){const r=pickFac('power',rot,2,used);r.label=`发电站${p+1}`;fs.power.push(r);te+=r.efficiency}
+    fs.meeting=pickFac('meeting',rot,2,used);fs.training=pickFac('training',rot,1,used)
     let tm=0;for(const[f,d]of Object.entries(fs)){const items=d.assigned||(Array.isArray(d)?d.flatMap(x=>x.assigned):[d])||[];const list=Array.isArray(d)?d:[d];for(const i of list){const ops=i.assigned||[i];for(const o of ops)if(o.moodCost)tm+=o.moodCost.cost}}
     scs.push({shift:s+1,label:['A班','B班'][s],facilities:fs,efficiency:te,moodCost:tm,ctrlBonus})}
   return{schedules:scs,totalEfficiency:scs.reduce((s,x)=>s+x.efficiency,0)}}
@@ -321,10 +325,13 @@ async function runSchedule(){const btn=document.getElementById('scheduleBtn');bt
 }
 function showShift(el,id){document.querySelectorAll('.shift-tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');document.querySelectorAll('[id^="shift"]').forEach(d=>d.style.display='none');document.getElementById(id).style.display='block'}
 </script>
+<script src="/mf-config.js"></script>
 <script>
 document.getElementById('loginBtn').addEventListener('click', login)
 document.getElementById('scheduleBtn').addEventListener('click', runSchedule)
 document.getElementById('credInput').addEventListener('keydown', e => { if(e.key==='Enter') login() })
-</script>
-</body>
-</html>
+initMfConfig()
+328|</script>
+329|</body>
+330|</html>
+331|
