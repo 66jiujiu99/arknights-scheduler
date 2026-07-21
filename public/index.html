@@ -7,40 +7,58 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#1a1a2e;color:#e0e0e0;font-family:'Segoe UI',sans-serif;min-height:100vh}
-.page{max-width:520px;margin:0 auto;padding:40px 20px}
-.logo{text-align:center;margin-bottom:28px}
-.logo h1{color:#d4a843;font-size:24px;letter-spacing:2px}
-.logo p{color:#888;font-size:13px;margin-top:6px}
-.card{background:#16213e;border-radius:12px;border:1px solid #2a3a5e;padding:28px;margin-bottom:16px}
-.card h2{font-size:15px;color:#d4a843;margin-bottom:14px;display:flex;align-items:center;gap:8px}
-.steps{background:#0f1629;border-radius:8px;padding:14px;font-size:13px;color:#ccc;line-height:1.8;margin-bottom:16px}
-.steps code{display:block;background:#1a1a2e;padding:10px;border-radius:6px;font-size:12px;color:#5398ff;word-break:break-all;margin:8px 0}
-label{display:block;font-size:13px;color:#aaa;margin-bottom:6px}
-input{width:100%;padding:10px 14px;background:#0f1629;border:1px solid #2a3a5e;border-radius:8px;color:#e0e0e0;font-size:14px;outline:none;transition:border .2s}
-input:focus{border-color:#5398ff}
-.btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:14px;cursor:pointer;transition:opacity .2s;margin-top:4px}
-.btn-primary{background:#d4a843;color:#1a1a2e;font-weight:600}
-.btn-primary:hover{opacity:.9}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-.status{padding:10px 14px;border-radius:6px;font-size:13px;margin-top:12px;display:none}
-.status.error{display:block;background:#3d1a1a;border:1px solid #6b2a2a;color:#ff6b6b}
-.status.success{display:block;background:#1a3d1a;border:1px solid #2a6b2a;color:#6bff6b}
-.status.info{display:block;background:#1a2a3d;border:1px solid #2a4a6b;color:#6bb5ff}
-.spinner{display:inline-block;width:16px;height:16px;border:2px solid #1a1a2e;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px}
+body{background:linear-gradient(135deg,#0a0a1a 0%,#1a1a3e 50%,#0d0d2b 100%);color:#e0e0e0;font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;min-height:100vh}
+.page{max-width:600px;margin:0 auto;padding:30px 16px 60px}
+.logo{text-align:center;margin-bottom:24px;position:relative}
+.logo::before{content:'◇';position:absolute;top:-8px;left:50%;transform:translateX(-50%);font-size:48px;color:#d4a843;opacity:.15}
+.logo h1{color:#d4a843;font-size:22px;letter-spacing:3px;text-shadow:0 0 20px rgba(212,168,67,.2)}
+.logo p{color:#666;font-size:12px;margin-top:4px;letter-spacing:1px}
+.card{background:rgba(22,33,62,.85);border-radius:12px;border:1px solid rgba(42,58,94,.6);padding:24px;margin-bottom:14px;backdrop-filter:blur(10px)}
+.card h2{font-size:14px;color:#d4a843;margin-bottom:12px;display:flex;align-items:center;gap:8px;letter-spacing:.5px}
+.steps{background:rgba(15,22,41,.6);border-radius:8px;padding:12px 14px;font-size:12.5px;color:#bbb;line-height:1.8;margin-bottom:14px;border:1px solid rgba(42,58,94,.3)}
+.steps strong{color:#d4a843}
+.steps code{display:block;background:#0a0a1a;padding:8px 10px;border-radius:6px;font-size:11.5px;color:#6bb5ff;word-break:break-all;margin:6px 0;border:1px solid rgba(42,58,94,.3)}
+.steps a{color:#6bb5ff;text-decoration:none}
+.steps a:hover{text-decoration:underline}
+label{display:block;font-size:12px;color:#888;margin-bottom:5px;letter-spacing:.5px}
+input{width:100%;padding:10px 14px;background:rgba(15,22,41,.8);border:1px solid rgba(42,58,94,.5);border-radius:8px;color:#e0e0e0;font-size:13px;outline:none;transition:all .2s}
+input:focus{border-color:rgba(212,168,67,.5);box-shadow:0 0 12px rgba(212,168,67,.08)}
+.btn{width:100%;padding:11px;border:none;border-radius:8px;font-size:13px;cursor:pointer;transition:all .2s;margin-top:4px;letter-spacing:1px}
+.btn-primary{background:linear-gradient(135deg,#d4a843,#c49430);color:#0a0a1a;font-weight:700}
+.btn-primary:hover{opacity:.92;transform:translateY(-1px);box-shadow:0 4px 16px rgba(212,168,67,.25)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.status{padding:10px 14px;border-radius:6px;font-size:12.5px;margin-top:10px;display:none;animation:fadeIn .3s}
+.status.error{display:block;background:rgba(61,26,26,.7);border:1px solid rgba(107,42,42,.5);color:#ff6b6b}
+.status.success{display:block;background:rgba(26,61,26,.7);border:1px solid rgba(42,107,42,.5);color:#5ddf5d}
+.status.info{display:block;background:rgba(26,42,61,.7);border:1px solid rgba(42,74,107,.5);color:#6bb5ff}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(10,10,26,.3);border-top-color:#0a0a1a;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
-.result{display:none;margin-top:12px}
+.result{display:none;margin-top:12px;animation:fadeIn .4s}
 .result.show{display:block}
-.result pre{background:#0f1629;padding:12px;border-radius:6px;font-size:11px;color:#6bb5ff;overflow-x:auto;max-height:300px}
-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
-th{text-align:left;color:#d4a843;padding:6px 8px;border-bottom:1px solid #2a3a5e}
-td{padding:6px 8px;border-bottom:1px solid #1a2a3e}
-tr:hover td{background:#1a2a4e}
-.rarity5{color:#d4a843}.rarity6{color:#ff6b35}.rarity4{color:#aa88ff}
-.stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
-.stat-item{background:#0f1629;border-radius:8px;padding:12px;text-align:center}
-.stat-num{font-size:20px;font-weight:700;color:#d4a843}
-.stat-label{font-size:11px;color:#888;margin-top:2px}
+.pre-wrap{background:rgba(15,22,41,.6);padding:10px;border-radius:6px;font-size:11px;color:#6bb5ff;overflow-x:auto;max-height:140px;border:1px solid rgba(42,58,94,.3)}
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.stat-item{background:rgba(15,22,41,.6);border-radius:8px;padding:12px 8px;text-align:center;border:1px solid rgba(42,58,94,.3)}
+.stat-num{font-size:22px;font-weight:700;color:#d4a843}
+.stat-label{font-size:10.5px;color:#777;margin-top:2px;letter-spacing:.5px}
+.table-wrap{max-height:320px;overflow-y:auto;border-radius:8px;border:1px solid rgba(42,58,94,.3)}
+.table-wrap::-webkit-scrollbar{width:4px}
+.table-wrap::-webkit-scrollbar-track{background:transparent}
+.table-wrap::-webkit-scrollbar-thumb{background:rgba(212,168,67,.3);border-radius:2px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:8px 10px;background:rgba(15,22,41,.8);color:#d4a843;font-weight:600;position:sticky;top:0;z-index:1;border-bottom:1px solid rgba(42,58,94,.5);letter-spacing:.5px}
+td{padding:7px 10px;border-bottom:1px solid rgba(42,58,94,.15)}
+tr:hover td{background:rgba(212,168,67,.04)}
+.rarity6{color:#ff6b35;font-weight:600}.rarity5{color:#d4a843}.rarity4{color:#aa88ff}.rarity3{color:#88ccff}.rarity2{color:#88dd88}.rarity1{color:#aaa}
+.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:4px;vertical-align:middle}
+.tag-6{background:rgba(255,107,53,.15);color:#ff6b35}
+.tag-5{background:rgba(212,168,67,.15);color:#d4a843}
+.tag-4{background:rgba(170,136,255,.15);color:#aa88ff}
+.tag-3{background:rgba(136,204,255,.15);color:#88ccff}
+.tag-2{background:rgba(136,221,136,.15);color:#88dd88}
+.tag-1{background:rgba(170,170,170,.15);color:#aaa}
+.elite-badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;background:rgba(42,58,94,.4);color:#888}
+.footer{text-align:center;font-size:11px;color:#555;margin-top:32px;letter-spacing:.5px}
 </style>
 </head>
 <body>
@@ -68,9 +86,10 @@ tr:hover td{background:#1a2a4e}
   <div id="resultCard" class="card result">
     <h2>📊 数据概览</h2>
     <div id="stats" class="stat-grid"></div>
-    <h2 style="margin-top:16px">🧑‍✈️ 干员列表</h2>
-    <div id="charTable" style="max-height:300px;overflow-y:auto"></div>
+    <h2 style="margin-top:14px">🧑‍✈️ 干员列表</h2>
+    <div class="table-wrap" id="tableWrap"></div>
   </div>
+  <div class="footer">数据仅存于本地浏览器 · 罗德岛智能排班系统</div>
 </div>
 
 <script>
@@ -153,20 +172,21 @@ async function login() {
       '<div class="stat-item"><div class="stat-num">' + ((building.manufactures||[]).length) + '</div><div class="stat-label">制造站</div></div>'
     
     // 干员表格
-    let html = '<table><tr><th>名字</th><th>星级</th><th>等级</th><th>精英</th></tr>'
+    let html = '<table><thead><tr><th>名字</th><th>星级</th><th>等级</th><th>精英</th></tr></thead><tbody>'
     for (const c of chars) {
       const id = c.id || c.charId
       const info = charInfoMap[id]
       const name = info?.name || id
       const rarity = c.rarity || info?.rarity || 1
-      const cls = rarityClass[rarity] || ''
+      const cls = 'rarity' + rarity
+      const tagCls = 'tag tag-' + rarity
       html += '<tr><td class="' + cls + '">' + name + '</td>' +
-        '<td>' + (rarityLabel[rarity] || '★' + rarity) + '</td>' +
+        '<td><span class="' + tagCls + '">★' + rarity + '</span></td>' +
         '<td>' + (c.level||'?') + '</td>' +
-        '<td>' + ('精英' + (c.evolvePhase||0)) + '</td></tr>'
+        '<td><span class="elite-badge">' + ('精英' + (c.evolvePhase||0)) + '</span></td></tr>'
     }
-    html += '</table>'
-    document.getElementById('charTable').innerHTML = html
+    html += '</tbody></table>'
+    document.getElementById('tableWrap').innerHTML = html
     document.getElementById('resultCard').classList.add('show')
     
     // 存数据
