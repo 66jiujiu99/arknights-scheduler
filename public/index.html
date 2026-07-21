@@ -72,8 +72,8 @@ function SHA256(msg){
   const dv=new DataView(padded.buffer);dv.setBigUint64(padLen-8,BigInt(bits),false)
   const w=new Uint32Array(64);let H=H0.slice()
   const rr=(a,n)=>(a>>>n)|(a<<(32-n))
-  for(let b=0;b<padLen;b+=64){
-    for(let j=0;j<16;j++)w[j]=dv.getUint32(b+j*4,false)
+  for(let blk=0;blk<padLen;blk+=64){
+    for(let j=0;j<16;j++)w[j]=dv.getUint32(blk+j*4,false)
     for(let j=16;j<64;j++){const s0=rr(w[j-15],7)^rr(w[j-15],18)^(w[j-15]>>>3),s1=rr(w[j-2],17)^rr(w[j-2],19)^(w[j-2]>>>10);w[j]=(w[j-16]+s0+w[j-7]+s1)|0}
     let [a,b,c,d,e,f,g,h]=H
     for(let j=0;j<64;j++){const S1=rr(e,6)^rr(e,11)^rr(e,25),ch=(e&f)^(~e&g),t1=(h+S1+ch+K[j]+w[j])|0,S0=rr(a,2)^rr(a,13)^rr(a,22),maj=(a&b)^(a&c)^(b&c);h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+S0+maj)|0}
@@ -94,7 +94,7 @@ function MD5(s){
     for(let j=0;j<64;j++){const fn=j<16?F:j<32?G:j<48?Hf:I,g=j<16?j:j<32?(5*j+1)%16:j<48?(3*j+5)%16:(7*j)%16,t=d;d=c;c=b0;b0=b0+rol((a+fn(b0,c,d)+w[i+g]+T[j])|0,S[j]);a=t}
     a=(a+A)>>>0;b0=(b0+B)>>>0;c=(c+C)>>>0;d=(d+D)>>>0}
   let r=''
-  for(const n of[a,b0,c,d])for(let i=0;i<4;i++){const byte=(n>>>(i*8))&255;r+=hex[(byte>>4)&15]+hex[byte&15]}
+  for(const val of[a,b0,c,d])for(let i=0;i<4;i++){const byte=(val>>>(i*8))&255;r+=hex[(byte>>4)&15]+hex[byte&15]}
   return r
 }
 function sign(path,params,token){
