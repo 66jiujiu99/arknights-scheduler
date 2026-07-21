@@ -4,20 +4,21 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>罗德岛智能排班系统</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#1a1a2e;color:#e0e0e0;font-family:'Segoe UI',sans-serif;min-height:100vh}
-.page{max-width:480px;margin:0 auto;padding:40px 20px}
-.logo{text-align:center;margin-bottom:32px}
+.page{max-width:520px;margin:0 auto;padding:40px 20px}
+.logo{text-align:center;margin-bottom:28px}
 .logo h1{color:#d4a843;font-size:24px;letter-spacing:2px}
 .logo p{color:#888;font-size:13px;margin-top:6px}
 .card{background:#16213e;border-radius:12px;border:1px solid #2a3a5e;padding:28px;margin-bottom:16px}
-.card h2{font-size:15px;color:#d4a843;margin-bottom:16px}
+.card h2{font-size:15px;color:#d4a843;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.steps{background:#0f1629;border-radius:8px;padding:14px;font-size:13px;color:#ccc;line-height:1.8;margin-bottom:16px}
+.steps code{display:block;background:#1a1a2e;padding:10px;border-radius:6px;font-size:12px;color:#5398ff;word-break:break-all;margin:8px 0}
 label{display:block;font-size:13px;color:#aaa;margin-bottom:6px}
 input{width:100%;padding:10px 14px;background:#0f1629;border:1px solid #2a3a5e;border-radius:8px;color:#e0e0e0;font-size:14px;outline:none;transition:border .2s}
 input:focus{border-color:#5398ff}
-.steps{background:#0f1629;border-radius:8px;padding:14px;font-size:13px;color:#ccc;line-height:1.8;margin-bottom:16px}
-.steps code{display:block;background:#1a1a2e;padding:10px;border-radius:6px;font-size:12px;color:#5398ff;word-break:break-all;margin:8px 0}
 .btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:14px;cursor:pointer;transition:opacity .2s;margin-top:4px}
 .btn-primary{background:#d4a843;color:#1a1a2e;font-weight:600}
 .btn-primary:hover{opacity:.9}
@@ -26,19 +27,27 @@ input:focus{border-color:#5398ff}
 .status.error{display:block;background:#3d1a1a;border:1px solid #6b2a2a;color:#ff6b6b}
 .status.success{display:block;background:#1a3d1a;border:1px solid #2a6b2a;color:#6bff6b}
 .status.info{display:block;background:#1a2a3d;border:1px solid #2a4a6b;color:#6bb5ff}
-.status .detail{font-size:11px;color:#888;margin-top:4px}
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid #1a1a2e;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .result{display:none;margin-top:12px}
 .result.show{display:block}
-.result pre{background:#0f1629;padding:12px;border-radius:6px;font-size:11px;color:#6bb5ff;overflow-x:auto;max-height:200px}
+.result pre{background:#0f1629;padding:12px;border-radius:6px;font-size:11px;color:#6bb5ff;overflow-x:auto;max-height:300px}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+th{text-align:left;color:#d4a843;padding:6px 8px;border-bottom:1px solid #2a3a5e}
+td{padding:6px 8px;border-bottom:1px solid #1a2a3e}
+tr:hover td{background:#1a2a4e}
+.rarity5{color:#d4a843}.rarity6{color:#ff6b35}.rarity4{color:#aa88ff}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.stat-item{background:#0f1629;border-radius:8px;padding:12px;text-align:center}
+.stat-num{font-size:20px;font-weight:700;color:#d4a843}
+.stat-label{font-size:11px;color:#888;margin-top:2px}
 </style>
 </head>
 <body>
 <div class="page">
   <div class="logo">
     <h1>◇ 罗德岛智能排班系统</h1>
-    <p>基于森空岛 API 的自动排班工具</p>
+    <p>基于森空岛 API · 数据本地存储</p>
   </div>
   
   <div class="card">
@@ -51,146 +60,131 @@ input:focus{border-color:#5398ff}
       3. 回到本页粘贴到下方输入框
     </div>
     <label>Credential</label>
-    <input id="credInput" placeholder="粘贴从森空岛复制的 cred" value="OREPdsDnE6aGWn93zfciZFieSm6xlGol"/>
+    <input id="credInput" placeholder="粘贴从森空岛复制的 cred"/>
     <button id="loginBtn" class="btn btn-primary" onclick="login()">获取干员数据</button>
     <div id="status" class="status"></div>
   </div>
   
-  <div id="result" class="card result">
+  <div id="resultCard" class="card result">
     <h2>📊 数据概览</h2>
-    <pre id="resultContent"></pre>
+    <div id="stats" class="stat-grid"></div>
+    <h2 style="margin-top:16px">🧑‍✈️ 干员列表</h2>
+    <div id="charTable" style="max-height:300px;overflow-y:auto"></div>
   </div>
 </div>
 
 <script>
-// ===== 签名工具 =====
-const hex='0123456789abcdef'
-function SHA256(msg){
-  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2],H0=[1779033703,3144134277,1013904242,2773480762,1359893119,2600822924,528734635,1541459225]
-  const enc=new TextEncoder(),raw=typeof msg=='string'?enc.encode(msg):msg,bits=raw.length*8,padLen=((raw.length+9+63)&~63),padded=new Uint8Array(padLen)
-  padded.set(raw),padded[raw.length]=0x80
-  const dv=new DataView(padded.buffer);dv.setBigUint64(padLen-8,BigInt(bits),false)
-  const w=new Uint32Array(64);let H=H0.slice()
-  const rr=(a,n)=>(a>>>n)|(a<<(32-n))
-  for(let blk=0;blk<padLen;blk+=64){
-    for(let j=0;j<16;j++)w[j]=dv.getUint32(blk+j*4,false)
-    for(let j=16;j<64;j++){const s0=rr(w[j-15],7)^rr(w[j-15],18)^(w[j-15]>>>3),s1=rr(w[j-2],17)^rr(w[j-2],19)^(w[j-2]>>>10);w[j]=(w[j-16]+s0+w[j-7]+s1)|0}
-    let [a,b,c,d,e,f,g,h]=H
-    for(let j=0;j<64;j++){const S1=rr(e,6)^rr(e,11)^rr(e,25),ch=(e&f)^(~e&g),t1=(h+S1+ch+K[j]+w[j])|0,S0=rr(a,2)^rr(a,13)^rr(a,22),maj=(a&b)^(a&c)^(b&c);h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+S0+maj)|0}
-    H=H.map((v,i)=>(v+[a,b,c,d,e,f,g,h][i])|0)
+function sign(path, params, token) {
+  const ts = String(Math.floor((Date.now() - 300) / 1000))
+  const headers = {
+    platform: '3',
+    timestamp: ts,
+    dId: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0',
+    vName: '1.2.0'
   }
-  const out=[]
-  for(let i=0;i<8;i++)for(let j=3;j>=0;j--)out.push((H[i]>>>(j*8))&255)
-  return out
-}
-function HMAC(k,m){const e=new TextEncoder(),kb=[...typeof k=='string'?[...e.encode(k)]:k],ka=kb.length>64?SHA256(kb):kb,kp=new Array(64).fill(0);for(let i=0;i<ka.length&&i<64;i++)kp[i]=ka[i];return SHA256(kp.map(b=>b^0x5c).concat(SHA256(kp.map(b=>b^0x36).concat([...e.encode(m)]))))}
-function MD5(s){function F(x,y,z){return(x&y)|(~x&z)}function G(x,y,z){return(x&z)|(y&~z)}function H(x,y,z){return x^y^z}function I(x,y,z){return y^(x|~z)}function rol(v,n){return(v<<n)|(v>>>(32-n))}
-var T=[],S=[7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];for(var i=1;i<=64;i++)T[i]=Math.floor(Math.abs(Math.sin(i))*4294967296)
-var enc=new TextEncoder(),bytes=enc.encode(s),l=bytes.length,n=(((l+8)>>6)+1)*16,w=new Array(n).fill(0)
-for(var i=0;i<l;i++)w[i>>2]|=(bytes[i]&255)<<((i%4)*8)
-w[l>>2]|=128<<((l%4)*8),w[n-2]=l*8
-var a=1732584193,b=4023233417,c=2562383102,d=271733878
-for(var i=0;i<n;i+=16){var A=a,B=b,C=c,D=d
-for(var j=0;j<64;j++){var fn,gi,si
-if(j<16){fn=F;gi=j;si=S[j]}
-else if(j<32){fn=G;gi=(j*5+1)%16;si=S[j]}
-else if(j<48){fn=H;gi=(j*3+5)%16;si=S[j]}
-else{fn=I;gi=(j*7)%16;si=S[j]}
-var t=a+fn(b,c,d)+w[i+gi]+T[j+1]
-a=d;d=c;c=b;b=b+rol(t,si)}
-a=(a+A)>>>0;b=(b+B)>>>0;c=(c+C)>>>0;d=(d+D)>>>0}
-var r=''
-for(var n of[a,b,c,d])for(var i=0;i<4;i++){var byte=(n>>>(i*8))&255;r+=hex[(byte>>4)&15]+hex[byte&15]}
-return r}
-function sign(path,params,token){
-  const ts=String(Math.floor((Date.now()-300)/1000)),h={platform:'3',timestamp:ts,dId:'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0',vName:'1.2.0'}
-  const text=path+(params||'')+ts+JSON.stringify(h),hmacB=HMAC(token,text),hmacH=hmacB.map(b=>b.toString(16).padStart(2,'0')).join(''),sg=MD5(hmacH)
-  return{timestamp:ts,sign:sg,headers:h}
+  const text = path + (params||'') + ts + JSON.stringify(headers)
+  const hmacHex = CryptoJS.HmacSHA256(text, token).toString()
+  const sign = CryptoJS.MD5(hmacHex).toString()
+  return { timestamp: ts, sign, headers }
 }
 
-// ===== 业务逻辑 =====
-async function fetchWithLog(url,opt){
-  const r=await fetch(url,opt)
-  const t=await r.text()
-  let d;try{d=JSON.parse(t)}catch{d={code:-1,message:t.slice(0,100)}}
-  return d
+async function api(url, headers) {
+  const r = await fetch(url, { headers })
+  const t = await r.text()
+  try { return JSON.parse(t) } catch { return { code: -1, message: t.slice(0,200) } }
 }
 
-async function getGameData(cred){
-  setStatus('info','正在连接森空岛...')
-  
-  // 1. 刷新token
-  const r1=await fetchWithLog('/api/sw/v1/auth/refresh',{headers:{cred}})
-  if(r1.code!==0)throw new Error('刷新token失败: '+(r1.message||''))
-  const token=r1.data.token
-  setStatus('info','已获取签名token...')
-  
-  // 2. 获取绑定
-  const s1=sign('/api/v1/game/player/binding','',token)
-  const r2=await fetchWithLog('/api/sk/v1/game/player/binding',{headers:{cred,...s1.headers,sign:s1.sign}})
-  if(r2.code!==0)throw new Error('获取绑定失败: '+(r2.message||''))
-  let akUid='0'
-  for(const a of(r2.data?.list||[]))if(a.appCode==='arknights'){akUid=a.bindingList[0].uid;break}
-  if(akUid==='0')throw new Error('未找到明日方舟角色绑定')
-  setStatus('info','已找到角色UID: '+akUid)
-  
-  // 3. 获取干员数据
-  const q='uid='+akUid,s2=sign('/api/v1/game/player/info',q,token)
-  const r3=await fetchWithLog('/api/sk/v1/game/player/info?'+q,{headers:{cred,...s2.headers,sign:s2.sign}})
-  if(r3.code!==0)throw new Error('获取数据失败: '+(r3.message||''))
-  return r3.data
+function showStatus(type, msg) {
+  const el = document.getElementById('status')
+  el.className = 'status ' + type
+  el.innerHTML = msg
 }
 
-function setStatus(type,msg){
-  const el=document.getElementById('status')
-  el.className='status '+type
-  el.innerHTML=msg
-}
+const rarityClass = ['','','','rarity4','rarity5','rarity6']
+const rarityLabel = ['','','','★4','★5','★6']
 
-async function login(){
-  const btn=document.getElementById('loginBtn')
-  const cred=document.getElementById('credInput').value.trim()
-  if(!cred){setStatus('error','请输入credential');return}
+async function login() {
+  const btn = document.getElementById('loginBtn')
+  const cred = document.getElementById('credInput').value.trim()
+  if (!cred) { showStatus('error', '请输入credential'); return }
   
-  btn.disabled=true
-  btn.innerHTML='<span class="spinner"></span>获取中...'
+  btn.disabled = true
+  btn.innerHTML = '<span class="spinner"></span>获取中...'
   
-  try{
-    const data=await getGameData(cred)
-    const chars=data.chars||[]
-    const building=data.building||{}
+  try {
+    showStatus('info', '正在连接森空岛...')
+    const r1 = await api('/api/sw/v1/auth/refresh', { cred })
+    if (r1.code !== 0) throw new Error('刷新token失败: ' + (r1.message || ''))
+    const token = r1.data.token
     
-    setStatus('success','✅ 获取成功！'+chars.length+'名干员')
+    showStatus('info', '已获取签名token...')
     
-    // 显示数据概览
-    const result=document.getElementById('result')
-    const content=document.getElementById('resultContent')
-    content.textContent=JSON.stringify({
-      nickname:data.status?.nickName||'博士',
-      level:data.status?.level||0,
-      干员数:chars.length,
-      基建:Object.keys(building).filter(k=>k!=='tiredChars'&&k!=='furniture'&&k!=='corridors').join(', '),
-      制造站:building.manufactures?.length||0,
-      贸易站:building.tradings?.length||0,
-      宿舍:building.dormitories?.length||0,
-    },null,2)
-    result.classList.add('show')
+    const s1 = sign('/api/v1/game/player/binding', '', token)
+    const r2 = await api('/api/sk/v1/game/player/binding', { cred, ...s1.headers, sign: s1.sign })
+    if (r2.code !== 0) throw new Error('获取绑定失败: ' + (r2.message || ''))
     
-    // 存入localStorage
-    localStorage.setItem('ak_user_data',JSON.stringify({
-      nickname:data.status?.nickName||'博士',
-      level:data.status?.level||0,
-      uid:akUid||'',
-      chars:chars.map(c=>({charId:c.id||c.charId,rarity:c.rarity||1,level:c.level||1,elite:c.evolvePhase||0,potential:Math.ceil((c.potentialRank||0)+1),own:true})),
-      building:{manufactures:building.manufactures||[],tradings:building.tradings||[],dormitories:building.dormitories||[],power:building.power||null,meeting:building.meeting||null,training:building.training||null,tiredChars:building.tiredChars||[],labor:building.labor||{}},
+    let uid = '0', nick = ''
+    for (const a of (r2.data?.list||[])) {
+      if (a.appCode === 'arknights') {
+        uid = a.bindingList[0].uid
+        nick = a.bindingList[0].nickName || ''
+        break
+      }
+    }
+    if (uid === '0') throw new Error('未找到明日方舟角色绑定')
+    showStatus('info', 'UID: ' + uid)
+    
+    const s2 = sign('/api/v1/game/player/info', 'uid='+uid, token)
+    const r3 = await api('/api/sk/v1/game/player/info?uid='+uid, { cred, ...s2.headers, sign: s2.sign })
+    if (r3.code !== 0) throw new Error('获取数据失败: ' + (r3.message || ''))
+    
+    const d = r3.data
+    const chars = d.chars || []
+    const building = d.building || {}
+    const charInfoMap = d.charInfoMap || {}
+    
+    showStatus('success', '✅ 获取成功！' + chars.length + '名干员')
+    
+    // 统计
+    const stats = document.getElementById('stats')
+    stats.innerHTML = '' +
+      '<div class="stat-item"><div class="stat-num">' + chars.length + '</div><div class="stat-label">干员</div></div>' +
+      '<div class="stat-item"><div class="stat-num">' + (d.status?.level||'?') + '</div><div class="stat-label">博士等级</div></div>' +
+      '<div class="stat-item"><div class="stat-num">' + ((building.manufactures||[]).length) + '</div><div class="stat-label">制造站</div></div>'
+    
+    // 干员表格
+    let html = '<table><tr><th>名字</th><th>星级</th><th>等级</th><th>精英</th></tr>'
+    for (const c of chars) {
+      const id = c.id || c.charId
+      const info = charInfoMap[id]
+      const name = info?.name || id
+      const rarity = c.rarity || info?.rarity || 1
+      const cls = rarityClass[rarity] || ''
+      html += '<tr><td class="' + cls + '">' + name + '</td>' +
+        '<td>' + (rarityLabel[rarity] || '★' + rarity) + '</td>' +
+        '<td>' + (c.level||'?') + '</td>' +
+        '<td>' + ('精英' + (c.evolvePhase||0)) + '</td></tr>'
+    }
+    html += '</table>'
+    document.getElementById('charTable').innerHTML = html
+    document.getElementById('resultCard').classList.add('show')
+    
+    // 存数据
+    localStorage.setItem('ak_user_data', JSON.stringify({
+      nickname: d.status?.nickName || nick || '博士',
+      level: d.status?.level || 0,
+      uid,
+      chars: chars.map(c => ({ charId: c.id||c.charId, rarity: (c.rarity||charInfoMap[c.id||c.charId]?.rarity||1), level: c.level||1, elite: c.evolvePhase||0, potential: Math.ceil((c.potentialRank||0)+1), own: true, name: charInfoMap[c.id||c.charId]?.name||c.id||c.charId })),
+      building: { manufactures: building.manufactures||[], tradings: building.tradings||[], dormitories: building.dormitories||[], power: building.power||null, meeting: building.meeting||null, training: building.training||null, tiredChars: building.tiredChars||[], labor: building.labor||{} },
+      charInfoMap: Object.fromEntries(Object.entries(charInfoMap).map(([k,v]) => [k, {name: v.name, rarity: v.rarity}])),
     }))
     
-  }catch(e){
-    setStatus('error','❌ '+e.message)
+  } catch (e) {
+    showStatus('error', '❌ ' + e.message)
     console.error(e)
-  }finally{
-    btn.disabled=false
-    btn.innerHTML='获取干员数据'
+  } finally {
+    btn.disabled = false
+    btn.innerHTML = '获取干员数据'
   }
 }
 </script>
