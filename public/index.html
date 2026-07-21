@@ -58,6 +58,16 @@ tr:hover td{background:rgba(212,168,67,.04)}
 .tag-2{background:rgba(136,221,136,.15);color:#88dd88}
 .tag-1{background:rgba(170,170,170,.15);color:#aaa}
 .elite-badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;background:rgba(42,58,94,.4);color:#888}
+.shift-tabs{display:flex;gap:6px;margin-bottom:10px}
+.shift-tab{padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;background:rgba(15,22,41,.6);border:1px solid rgba(42,58,94,.3);color:#888;transition:all .2s}
+.shift-tab.active{background:rgba(212,168,67,.15);border-color:rgba(212,168,67,.4);color:#d4a843}
+.facility-card{background:rgba(15,22,41,.6);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid rgba(42,58,94,.3)}
+.facility-card h4{font-size:12px;color:#d4a843;margin-bottom:6px}
+.facility-card .slot{display:flex;align-items:center;gap:6px;padding:3px 6px;margin:2px 0;font-size:11px;border-radius:4px}
+.facility-card .slot .name{flex:1;color:#e0e0e0}
+.facility-card .slot .eff{color:#6bb5ff;font-size:10px}
+.facility-card .slot .eff-good{color:#5ddf5d}
+.eff-total{text-align:center;font-size:13px;color:#d4a843;padding:8px;margin-top:8px;background:rgba(212,168,67,.06);border-radius:6px}
 .footer{text-align:center;font-size:11px;color:#555;margin-top:32px;letter-spacing:.5px}
 </style>
 </head>
@@ -88,6 +98,12 @@ tr:hover td{background:rgba(212,168,67,.04)}
     <div id="stats" class="stat-grid"></div>
     <h2 style="margin-top:14px">🧑‍✈️ 干员列表</h2>
     <div class="table-wrap" id="tableWrap"></div>
+  </div>
+  
+  <div id="scheduleCard" class="card result">
+    <h2>📋 智能排班</h2>
+    <button id="scheduleBtn" class="btn btn-primary" type="button" style="margin-bottom:12px">生成排班表</button>
+    <div id="scheduleResult"></div>
   </div>
   <div class="footer">数据仅存于本地浏览器 · 罗德岛智能排班系统</div>
 </div>
@@ -194,7 +210,19 @@ async function login() {
       nickname: d.status?.nickName || nick || '博士',
       level: d.status?.level || 0,
       uid,
-      chars: chars.map(c => ({ charId: c.id||c.charId, rarity: (c.rarity||charInfoMap[c.id||c.charId]?.rarity||1), level: c.level||1, elite: c.evolvePhase||0, potential: Math.ceil((c.potentialRank||0)+1), own: true, name: charInfoMap[c.id||c.charId]?.name||c.id||c.charId })),
+      chars: chars.map(c => {
+        const id = c.id||c.charId
+        const info = charInfoMap[id]
+        return {
+          charId: id,
+          name: info?.name || id,
+          rarity: c.rarity || info?.rarity || 1,
+          level: c.level||1,
+          elite: c.evolvePhase||0,
+          potential: Math.ceil((c.potentialRank||0)+1),
+          own: true,
+        }
+      }),
       building: { manufactures: building.manufactures||[], tradings: building.tradings||[], dormitories: building.dormitories||[], power: building.power||null, meeting: building.meeting||null, training: building.training||null, tiredChars: building.tiredChars||[], labor: building.labor||{} },
       charInfoMap: Object.fromEntries(Object.entries(charInfoMap).map(([k,v]) => [k, {name: v.name, rarity: v.rarity}])),
     }))
@@ -207,9 +235,135 @@ async function login() {
     btn.innerHTML = '获取干员数据'
   }
 }
+
+// ===== 排班算法 =====
+const FACILITY_CFG = {
+  manufacture: { label:'制造站', slots:3 },
+  trading: { label:'贸易站', slots:3 },
+  power: { label:'发电站', slots:2 },
+  meeting: { label:'会客室', slots:2 },
+  training: { label:'训练室', slots:1 },
+}
+
+let baseSkillsCache = null
+async function loadBaseSkills() {
+  if (baseSkillsCache) return baseSkillsCache
+  const r = await fetch('/data/baseSkills.json')
+  baseSkillsCache = await r.json()
+  return baseSkillsCache
+}
+
+function matchSkills(chars, skills) {
+  return (chars||[]).map(c => {
+    const sd = skills[c.charId]
+    if (!sd) return { ...c, baseSkills: {} }
+    const fac = {}
+    for (const [f, info] of Object.entries(sd)) {
+      if (['name','rarity'].includes(f)) continue
+      fac[f] = { type: info.type||'productivity', value: info.value||0, desc: info.desc||'' }
+    }
+    return { ...c, rarity: sd.rarity||c.rarity||1, baseSkills: fac }
+  })
+}
+
+function pickForFacility(type, pool, count) {
+  const skilled = pool.filter(o => o.baseSkills && o.baseSkills[type]).sort((a,b) => (b.baseSkills[type]?.value||0) - (a.baseSkills[type]?.value||0))
+  const used = new Set(), assigned = []
+  let eff = 0
+  for (const op of skilled) {
+    if (assigned.length >= count) break
+    if (used.has(op.charId)) continue
+    used.add(op.charId)
+    assigned.push({ name: op.name||op.charId, rarity: op.rarity, skill: op.baseSkills[type] })
+    eff += op.baseSkills[type]?.value||0
+  }
+  for (const op of pool) {
+    if (assigned.length >= count) break
+    if (used.has(op.charId)) continue
+    used.add(op.charId)
+    assigned.push({ name: op.name||op.charId, rarity: op.rarity, skill: { type:'general', value:0, desc:'通用' } })
+  }
+  while (assigned.length < count) assigned.push({ name:'空位', rarity:1, skill:{ type:'empty', value:0, desc:'待分配' } })
+  return { assigned, efficiency: eff }
+}
+
+function generateSchedule(userData, skills) {
+  const chars = matchSkills(userData.chars||[], skills)
+  const bld = userData.building||{}
+  const facs = {
+    manufacture: { count: Math.max((bld.manufactures||[]).length||3, 2) },
+    trading: { count: Math.max((bld.tradings||[]).length||1, 1) },
+    power: { count: 2 },
+    meeting: { count: 1 },
+    training: { count: 1 },
+  }
+  const schedules = []
+  for (let s = 0; s < 3; s++) {
+    const pool = [...chars]
+    const offset = Math.floor(pool.length / 3) * s
+    const rotated = [...pool.slice(offset), ...pool.slice(0, offset)]
+    const shiftFacs = {}
+    let totalEff = 0
+    for (const [fac, cfg] of Object.entries(facs)) {
+      const slots = FACILITY_CFG[fac]?.slots||3
+      const r = pickForFacility(fac, rotated, slots)
+      shiftFacs[fac] = r.assigned
+      totalEff += r.efficiency
+    }
+    schedules.push({ shift: s+1, label: ['A班','B班','C班'][s], facilities: shiftFacs, efficiency: totalEff })
+  }
+  return { schedules, totalEfficiency: schedules.reduce((s,x)=>s+x.efficiency,0) }
+}
+
+async function runSchedule() {
+  const btn = document.getElementById('scheduleBtn')
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>计算中...'
+  try {
+    const raw = localStorage.getItem('ak_user_data')
+    if (!raw) { alert('请先获取干员数据'); return }
+    const userData = JSON.parse(raw)
+    const skills = await loadBaseSkills()
+    const result = generateSchedule(userData, skills)
+    
+    let html = '<div class="shift-tabs">'
+    for (const sch of result.schedules) {
+      html += `<div class="shift-tab active" onclick="showShift(this,'shift${sch.shift}')">${sch.label}</div>`
+    }
+    html += '</div>'
+    for (const sch of result.schedules) {
+      html += `<div id="shift${sch.shift}" style="display:${sch.shift===1?'block':'none'}">`
+      for (const [fac, ops] of Object.entries(sch.facilities)) {
+        html += `<div class="facility-card"><h4>${FACILITY_CFG[fac]?.label||fac}</h4>`
+        for (const op of ops) {
+          const cl = op.skill.value > 0 ? 'eff-good' : 'eff'
+          html += `<div class="slot"><span class="name">${op.name}</span><span class="${cl}">${op.skill.desc||''} ${op.skill.value||''}</span></div>`
+        }
+        html += '</div>'
+      }
+      html += `<div class="eff-total">总效率: ${sch.efficiency.toFixed(1)}</div>`
+      html += '</div>'
+    }
+    html += `<div class="eff-total" style="margin-top:4px">三班总效率: ${result.totalEfficiency.toFixed(1)}</div>`
+    document.getElementById('scheduleResult').innerHTML = html
+    document.getElementById('scheduleCard').classList.add('show')
+  } catch(e) {
+    alert('排班失败: '+e.message)
+    console.error(e)
+  } finally {
+    btn.disabled = false; btn.innerHTML = '生成排班表'
+  }
+}
+
+function showShift(el, id) {
+  document.querySelectorAll('.shift-tab').forEach(t=>t.classList.remove('active'))
+  el.classList.add('active')
+  document.querySelectorAll('[id^="shift"]').forEach(d=>d.style.display='none')
+  document.getElementById(id).style.display = 'block'
+}
 </script>
 <script>
 document.getElementById('loginBtn').addEventListener('click', login)
+document.getElementById('scheduleBtn').addEventListener('click', runSchedule)
 document.getElementById('credInput').addEventListener('keydown', e => { if(e.key==='Enter') login() })
 </script>
 </body>
