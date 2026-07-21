@@ -244,7 +244,7 @@ const FACILITY_CFG = {
   power:       { label:'发电站', slots:2, moodCost:0.75 },
   meeting:     { label:'会客室', slots:2, moodCost:0.5 },
   training:    { label:'训练室', slots:1, moodCost:0.3 },
-  control:     { label:'控制中心', slots:4, moodCost:0.5 },
+  control:     { label:'控制中心', slots:5, moodCost:0.5 },
 }
 function classifyMF(d){if(!d)return'通用';if(d.includes('源石'))return'源石碎片';if(d.includes('贵金属')||d.includes('赤金'))return'赤金';if(d.includes('作战记录'))return'作战记录';if(d.includes('技巧概要'))return'技巧概要';return'通用'}
 let baseSkillsCache=null
@@ -270,7 +270,7 @@ function generateSchedule(ud,skills){const chars=analyzeSkills(ud.chars||[],skil
   const mfC=Math.max((bld.manufactures||[]).length,2),trC=Math.max((bld.tradings||[]).length,1),cats=['赤金','作战记录','源石碎片','通用','赤金']
   const scs=[];for(let s=0;s<2;s++){const pool=[...chars],off=Math.floor(pool.length/2)*s,rot=[...pool.slice(off),...pool.slice(0,off)]
     const fs={};let te=0
-    fs.control=pickFac('control',chars,4)
+    fs.control=pickFac('control',chars,5)
     fs.manufacture=[];for(let m=0;m<mfC;m++){const r=pickMF('manufacture',rot,3,cats[m%cats.length]);r.label=`制造站${m+1}(${cats[m%cats.length]})`;fs.manufacture.push(r);te+=r.efficiency}
     fs.trading=[];for(let t=0;t<trC;t++){const r=pickFac('trading',rot,3);r.label=`贸易站${t+1}`;fs.trading.push(r);te+=r.efficiency}
     fs.power=[];for(let p=0;p<2;p++){const r=pickFac('power',rot,2);r.label=`发电站${p+1}`;fs.power.push(r);te+=r.efficiency}
