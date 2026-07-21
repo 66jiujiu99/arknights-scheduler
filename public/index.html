@@ -276,14 +276,21 @@ function pickGeneric(pool,count){const u=new Set(),r=[];let e=0
 function generateSchedule(ud,skills){const chars=analyzeSkills(ud.chars||[],skills),bld=ud.building||{}
   const mfC=Math.max((bld.manufactures||[]).length,2),trC=Math.max((bld.tradings||[]).length,1),cats=['赤金','作战记录','源石碎片','通用','赤金']
   const scs=[];for(let s=0;s<2;s++){const pool=[...chars],off=Math.floor(pool.length/2)*s,rot=[...pool.slice(off),...pool.slice(0,off)]
-    const fs={};let te=0
+    const fs={};let te=0,ctrlBonus=0
     fs.control=pickFac('control',chars,5)
-    fs.manufacture=[];for(let m=0;m<mfC;m++){const r=pickMF('manufacture',rot,3,cats[m%cats.length]);r.label=`制造站${m+1}(${cats[m%cats.length]})`;fs.manufacture.push(r);te+=r.efficiency}
-    fs.trading=[];for(let t=0;t<trC;t++){const r=pickFac('trading',rot,3);r.label=`贸易站${t+1}`;fs.trading.push(r);te+=r.efficiency}
+    // 计算控制中枢全局加成
+    for(const o of fs.control.assigned||[]){const cb=ctrlOps[o.charId];if(!cb)continue
+      for(const bf of cb.buffs||[]){const d=bf.desc||''
+        if(d.includes('所有制造站生产力')){const m=d.match(/[\d.]+(?=%)/);if(m)ctrlBonus+=parseFloat(m[0])}
+        if(d.includes('所有贸易站订单效率')){const m=d.match(/[\d.]+(?=%)/);if(m)ctrlBonus+=parseFloat(m[0])}
+      }
+    }
+    fs.manufacture=[];for(let m=0;m<mfC;m++){const r=pickMF('manufacture',rot,3,cats[m%cats.length]);r.label=`制造站${m+1}(${cats[m%cats.length]})`;r.ctrlBonus=ctrlBonus;te+=r.efficiency}
+    fs.trading=[];for(let t=0;t<trC;t++){const r=pickFac('trading',rot,3);r.label=`贸易站${t+1}`;r.ctrlBonus=ctrlBonus;te+=r.efficiency}
     fs.power=[];for(let p=0;p<2;p++){const r=pickFac('power',rot,2);r.label=`发电站${p+1}`;fs.power.push(r);te+=r.efficiency}
     fs.meeting=pickFac('meeting',rot,2);fs.training=pickFac('training',rot,1)
     let tm=0;for(const[f,d]of Object.entries(fs)){const items=d.assigned||(Array.isArray(d)?d.flatMap(x=>x.assigned):[d])||[];const list=Array.isArray(d)?d:[d];for(const i of list){const ops=i.assigned||[i];for(const o of ops)if(o.moodCost)tm+=o.moodCost.cost}}
-    scs.push({shift:s+1,label:['A班','B班'][s],facilities:fs,efficiency:te,moodCost:tm})}
+    scs.push({shift:s+1,label:['A班','B班'][s],facilities:fs,efficiency:te,moodCost:tm,ctrlBonus})}
   return{schedules:scs,totalEfficiency:scs.reduce((s,x)=>s+x.efficiency,0)}}
 async function runSchedule(){const btn=document.getElementById('scheduleBtn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>计算中...'
   try{const raw=localStorage.getItem('ak_user_data');if(!raw){alert('请先获取干员数据');return}
@@ -292,7 +299,7 @@ async function runSchedule(){const btn=document.getElementById('scheduleBtn');bt
     h+='</div>'
     for(const s of result.schedules){h+=`<div id="shift${s.shift}" style="display:${s.shift===1?'block':'none'}">`
       h+=`<div class="facility-card"><h4>🏛️ 控制中心</h4>`;for(const o of(s.facilities.control?.assigned||[])){const cb=ctrlOps[o.charId];const desc=cb?cb.buffs[0]?.desc||'':'';h+=`<div class="slot"><span class="name">${o.name}</span><span class="eff-good">${desc||'通用'}</span></div>`}h+=`</div>`
-      for(const mf of(s.facilities.manufacture||[])){h+=`<div class="facility-card"><h4>🏭 ${mf.label}</h4>`;for(const o of(mf.assigned||[])){const c=o.skill.value>0?'eff-good':'eff';const mood=o.moodCost?` 💚${o.moodCost.cost>0?'+':''}${o.moodCost.cost}`:'';h+=`<div class="slot"><span class="name">${o.name}</span><span class="${c}">${o.skill.desc||''}${mood}</span></div>`}h+=`<div class="eff-total" style="padding:4px;font-size:11px">效率: ${mf.efficiency.toFixed(1)}</div></div>`}
+      for(const mf of(s.facilities.manufacture||[])){h+=`<div class="facility-card"><h4>🏭 ${mf.label}</h4>`;for(const o of(mf.assigned||[])){const c=o.skill.value>0?'eff-good':'eff';const mood=o.moodCost?` 💚${o.moodCost.cost>0?'+':''}${o.moodCost.cost}`:'';h+=`<div class="slot"><span class="name">${o.name}</span><span class="${c}">${o.skill.desc||''}${mood}</span></div>`}h+=`<div class="eff-total" style="padding:4px;font-size:11px">效率: ${mf.efficiency.toFixed(1)}${mf.ctrlBonus>0?'+中枢'+mf.ctrlBonus+'%':''}</div></div>`}
       for(const tr of(s.facilities.trading||[])){h+=`<div class="facility-card"><h4>🏪 ${tr.label}</h4>`;for(const o of(tr.assigned||[])){const c=o.skill.value>0?'eff-good':'eff';h+=`<div class="slot"><span class="name">${o.name}</span><span class="${c}">${o.skill.desc||''}</span></div>`}h+=`<div class="eff-total" style="padding:4px;font-size:11px">效率: ${tr.efficiency.toFixed(1)}</div></div>`}
       for(const pw of(s.facilities.power||[])){h+=`<div class="facility-card"><h4>⚡ ${pw.label}</h4>`;for(const o of(pw.assigned||[])){const c=o.skill.value>0?'eff-good':'eff';h+=`<div class="slot"><span class="name">${o.name}</span><span class="${c}">${o.skill.desc||''}</span></div>`}h+=`<div class="eff-total" style="padding:4px;font-size:11px">效率: ${pw.efficiency.toFixed(1)}</div></div>`}
       if(s.facilities.meeting?.assigned){h+=`<div class="facility-card"><h4>🤝 会客室</h4>`;for(const o of s.facilities.meeting.assigned){const c=o.skill.value>0?'eff-good':'eff';h+=`<div class="slot"><span class="name">${o.name}</span><span class="${c}">${o.skill.desc||''}</span></div>`}h+=`</div>`}
