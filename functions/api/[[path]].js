@@ -11,20 +11,19 @@ export async function onRequest(context) {
   }
   
   let targetUrl;
-  if (path.startsWith('auth/')) {
-    targetUrl = 'https://as.hypergryph.com/' + path;
-  } else if (path.startsWith('skland-web/')) {
-    targetUrl = 'https://zonai.skland.com/web/' + path.replace('skland-web/', '') + queryStr;
-  } else if (path.startsWith('skland/')) {
-    targetUrl = 'https://zonai.skland.com/api/v1/' + path.replace('skland/', '') + queryStr;
+  if (path.startsWith('sw/')) {
+    targetUrl = 'https://zonai.skland.com/web/' + path.slice(3) + queryStr;
+  } else if (path.startsWith('sk/')) {
+    targetUrl = 'https://zonai.skland.com/api/' + path.slice(3) + queryStr;
+  } else if (path.startsWith('ah/')) {
+    targetUrl = 'https://as.hypergryph.com/' + path.slice(3) + queryStr;
   } else {
     return new Response('Not Found', { status: 404 });
   }
   
-  // 透传前端发来的所有header（以cred/sign/platform/timestamp/dId/vName为主）
-  const fwdHeaders = ['cred', 'sign', 'platform', 'timestamp', 'dId', 'vName'];
-  const headers = { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; AK-Scheduler/1.0)' };
-  for (const h of fwdHeaders) {
+  const fwd = ['cred', 'sign', 'platform', 'timestamp', 'dId', 'vName'];
+  const headers = { 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0' };
+  for (const h of fwd) {
     const val = request.headers.get(h);
     if (val) headers[h] = val;
   }
