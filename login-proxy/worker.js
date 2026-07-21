@@ -28,23 +28,25 @@ async function handleRequest(request) {
     })
   }
 
-  // 只处理 POST 请求到 /api/* 路径
-  if (request.method !== 'POST' || !url.pathname.startsWith('/api/')) {
+  // 处理所有 /api/* 路径
+  if (!url.pathname.startsWith('/api/')) {
     return new Response('Not Found', { status: 404 })
   }
 
+  // 透传请求方法和查询参数
   const targetPath = url.pathname.replace('/api/', '')
+  const queryStr = url.search  // 保留 ?channel_id=1&app_code=arknights
   let targetUrl
 
   if (targetPath.startsWith('auth/')) {
     targetUrl = `${HYPERGRYPH_API}/${targetPath}`
   } else if (targetPath.startsWith('skland/')) {
-    targetUrl = `${SKYLAND_API}/${targetPath.replace('skland/', '')}`
+    targetUrl = `${SKYLAND_API}/${targetPath.replace('skland/', '')}${queryStr}`
   } else {
     return new Response('Invalid path', { status: 400 })
   }
 
-  const body = await request.text()
+  const body = request.method === 'GET' ? undefined : await request.text()
   const headers = {
     'Content-Type': 'application/json',
     'User-Agent': 'AK-Scheduler/1.0',
@@ -60,7 +62,7 @@ async function handleRequest(request) {
 
   try {
     const resp = await fetch(targetUrl, {
-      method: 'POST',
+      method: request.method,
       headers,
       body: body || undefined,
     })

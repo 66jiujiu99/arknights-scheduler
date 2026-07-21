@@ -7,27 +7,27 @@
 const HYPERGRYPH_API = 'https://as.hypergryph.com'
 const SKYLAND_API = 'https://www.skland.com/api/v1'
 
-// CORS 代理 — 用户可配置（使用部署的Cloudflare Worker）
+// CORS 代理地址（Cloudflare Worker）
 let corsProxy = localStorage.getItem('ak_cors_proxy') || ''
 
-function setCorsProxy(url) {
+export function setCorsProxy(url) {
   corsProxy = url
   localStorage.setItem('ak_cors_proxy', url)
 }
 
-function apiUrl(path) {
-  if (corsProxy) {
-    // Cloudflare Worker 模式：/api/auth/xxx → worker 转发
-    return corsProxy.replace(/\/$/, '') + '/api/' + path
-  }
-  // 直连模式（需要CORS插件或本地环境）
-  if (path.startsWith('auth/')) return `${HYPERGRYPH_API}/${path}`
-  if (path.startsWith('skland/')) return `${SKYLAND_API}/${path.replace('skland/', '')}`
-  return `${HYPERGRYPH_API}/${path}`
+function resolveUrl(url) {
+  if (!corsProxy) return url
+  
+  // 带proxy时，将完整URL转为worker路径
+  let path = url
+  if (url.startsWith(SKYLAND_API)) path = 'skland/' + url.slice(SKYLAND_API.length)
+  else if (url.startsWith(HYPERGRYPH_API)) path = 'auth/' + url.slice(HYPERGRYPH_API.length)
+  
+  return corsProxy.replace(/\/$/, '') + '/api/' + path
 }
 
 async function request(url, options = {}) {
-  const targetUrl = corsProxy ? corsProxy.replace(/\/$/, '') + '/api/' + url : url
+  const targetUrl = resolveUrl(url)
   const res = await fetch(targetUrl, {
     ...options,
     headers: {
@@ -36,12 +36,10 @@ async function request(url, options = {}) {
       ...options.headers,
     },
   })
-  return res.json()
+  const text = await res.text()
+  try { return JSON.parse(text) } catch { return { code: -1, message: text } }
 }
 
-/**
- * ① 手机号 + 密码登录
- */
 export async function loginByPassword(phone, password) {
   const data = await request(`${HYPERGRYPH_API}/user/auth/v1/token_by_phone_password`, {
     method: 'POST',
@@ -51,9 +49,6 @@ export async function loginByPassword(phone, password) {
   return data.data.token
 }
 
-/**
- * ② 手机验证码登录 — 发送验证码
- */
 export async function sendSmsCode(phone) {
   const data = await request(`${HYPERGRYPH_API}/general/v1/send_phone_code`, {
     method: 'POST',
@@ -63,9 +58,6 @@ export async function sendSmsCode(phone) {
   return true
 }
 
-/**
- * ② 手机验证码登录 — 用验证码换token
- */
 export async function loginBySmsCode(phone, code) {
   const data = await request(`${HYPERGRYPH_API}/user/auth/v2/token_by_phone_code`, {
     method: 'POST',
@@ -75,10 +67,6 @@ export async function loginBySmsCode(phone, code) {
   return data.data.token
 }
 
-/**
- * ③ 森空岛扫码 — 使用credential直接换游戏数据
- * cred 从森空岛APP/浏览器中获取
- */
 export function saveCredential(cred) {
   localStorage.setItem('ak_cred', cred)
 }
@@ -87,16 +75,10 @@ export function getSavedCredential() {
   return localStorage.getItem('ak_cred') || ''
 }
 
-/**
- * 鹰角token → 森空岛credential
- */
 export async function exchangeCredential(token) {
   const data = await request(`${SKYLAND_API}/auth/create`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'cred': token,
-    },
+    headers: { 'cred': token },
     body: JSON.stringify({ appCode: 'arknights' }),
   })
   if (data.code !== 0) throw new Error(data.message || '换取凭证失败')
@@ -128,9 +110,6 @@ export async function fetchGameData(cred) {
   return data.data
 }
 
-/**
- * 签名生成（森空岛API auth）
- */
 async function generateSign(ts, cred) {
   const encoder = new TextEncoder()
   const data = encoder.encode(`${ts}${cred}`)
@@ -139,5 +118,3 @@ async function generateSign(ts, cred) {
     .map(b => b.toString(16).padStart(2, '0'))
     .join('')
 }
-
-export { setCorsProxy }
