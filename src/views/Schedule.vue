@@ -56,7 +56,7 @@
               </div>
               <div v-for="op in ops" :key="op.id" class="ak-facility-slot">
                 <div class="ak-operator-avatar" 
-                     :style="{ background: op.isGeneral ? 'var(--ak-border)' : op.baseSkill?.value > 20 ? 'rgba(245,197,24,0.2)' : 'var(--ak-bg-panel)' }">
+                     :style="{ background: op.isGeneral ? 'var(--ak-border)' : op.currentSkill?.value > 20 ? 'rgba(245,197,24,0.2)' : 'var(--ak-bg-panel)' }">
                   {{ op.name?.charAt(0) || '?' }}
                 </div>
                 <div style="flex:1">
@@ -65,13 +65,13 @@
                     <span v-if="op.isGeneral" style="font-size:11px; color:var(--ak-text-dim)">(通用)</span>
                   </div>
                   <div style="font-size:11px; color:var(--ak-text-dim)">
-                    {{ op.baseSkill?.desc || '无技能' }}
+                    {{ op.currentSkill?.desc || '无技能' }}
                   </div>
                 </div>
-                <span v-if="op.baseSkill?.value > 0" class="ak-tag" 
-                      :class="op.baseSkill.value > 25 ? 'ak-tag-yellow' : op.baseSkill.value > 15 ? 'ak-tag-green' : 'ak-tag-blue'"
+                <span v-if="op.currentSkill?.value > 0" class="ak-tag" 
+                      :class="op.currentSkill.value > 25 ? 'ak-tag-yellow' : op.currentSkill.value > 15 ? 'ak-tag-green' : 'ak-tag-blue'"
                       style="flex-shrink:0">
-                  +{{ op.baseSkill.value }}%
+                  +{{ op.currentSkill.value }}%
                 </span>
               </div>
             </div>

@@ -82,9 +82,9 @@
               </span>
             </td>
             <td>{{ op.level || '-' }}</td>
-            <td style="font-size:12px; color:var(--ak-text-dim)">{{ op.baseSkill?.desc || op.skillDesc || '无' }}</td>
+            <td style="font-size:12px; color:var(--ak-text-dim)">{{ getOperatorSkillDesc(op.id) }}</td>
             <td>
-              <span v-if="op.baseSkill?.value > 0" class="ak-tag ak-tag-green">+{{ op.baseSkill.value }}%</span>
+              <span v-if="getOperatorSkillValue(op.id) > 0" class="ak-tag ak-tag-green">+{{ getOperatorSkillValue(op.id) }}%</span>
             </td>
             <td>
               <button class="ak-btn ak-btn-secondary" style="padding:2px 8px; font-size:11px" @click="removeOperator(op.id)">移除</button>
@@ -101,10 +101,28 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import baseSkills from '../data/baseSkills.json'
 
 const searchQuery = ref('')
 const showAddForm = ref(false)
 const newOp = ref({ name: '', rarity: 5, level: 1, baseSkill: '' })
+
+function getOperatorSkillDesc(opId) {
+  const data = baseSkills[opId]
+  if (!data) return '无基建技能'
+  const facilities = Object.keys(data).filter(k => !['name','rarity'].includes(k))
+  if (facilities.length === 0) return '无基建技能'
+  const first = data[facilities[0]]
+  return first?.desc || '有基建技能'
+}
+
+function getOperatorSkillValue(opId) {
+  const data = baseSkills[opId]
+  if (!data) return 0
+  const facilities = Object.keys(data).filter(k => !['name','rarity'].includes(k))
+  if (facilities.length === 0) return 0
+  return data[facilities[0]]?.value || 0
+}
 
 function getOperators() {
   try {
