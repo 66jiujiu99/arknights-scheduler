@@ -1,5 +1,4 @@
-import hmacSHA256 from 'crypto-js/hmac-sha256'
-import md5 from 'crypto-js/md5'
+import { generateSklandSign } from '../utils/sign.js'
 
 /**
  * 鹰角网络 / 森空岛 API 封装 v3
@@ -56,22 +55,6 @@ async function request(url, options = {}) {
     console.error('[API] 异常:', e)
     return { code: -1, message: e.message }
   }
-}
-
-/**
- * 生成 zonai.skland.com 签名（与一图流完全一致）
- */
-function generateSklandSign(path, params, token) {
-  const timestamp = String(Math.floor((Date.now() - 300) / 1000))
-  const headers = {
-    platform: '3',
-    timestamp,
-    dId: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0',
-    vName: '1.2.0'
-  }
-  const text = path + (params || '') + timestamp + JSON.stringify(headers)
-  const sign = md5(hmacSHA256(text, token).toString()).toString()
-  return { timestamp, sign, headers }
 }
 
 /**
