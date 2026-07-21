@@ -19,13 +19,13 @@
           2. 按 F12 → Console（控制台）<br>
           3. 粘贴以下命令并回车：<br>
           <code style="display:block; padding:8px; margin:8px 0; background:var(--ak-bg-dark); border-radius:4px; font-size:12px; word-break:break-all">
-            copy(localStorage.getItem('SK_OAUTH_CRED_KEY'))
+            copy(localStorage.getItem('SK_OAUTH_CRED_KEY')+','+localStorage.getItem('SK_TOKEN_CACHE_KEY'))
           </code>
-          4. 自动复制到剪贴板，回到本页粘贴即可
+          4. 自动复制到剪贴板（格式：<code>cred,token</code>），回到本页粘贴即可
         </ak-alert>
         <div class="ak-form-group">
-          <label class="ak-label">Credential</label>
-          <input v-model="credInput" class="ak-input" placeholder="粘贴从森空岛复制的cred" />
+          <label class="ak-label">凭证（cred,token）</label>
+          <input v-model="credInput" class="ak-input" placeholder='粘贴从森空岛复制的 "cred,token"（两个值都要）' />
         </div>
         <button class="ak-btn ak-btn-primary" style="width:100%; justify-content:center" @click="loginWithCred" :disabled="loading">
           <span v-if="loading" class="ak-spinner"></span>
@@ -191,15 +191,21 @@ async function loginWithAkCookie() {
 
 async function loginWithCred() {
   error.value = ''
-  if (!credInput.value.trim()) { error.value = '请输入 credential'; return }
+  const input = credInput.value.trim()
+  if (!input) { error.value = '请粘贴凭证'; return }
   loading.value = true
   try {
-    saveCredential(credInput.value.trim())
-    const gameData = await fetchGameData(credInput.value.trim())
-    await processGameData(gameData)
+    // 支持 cred,token 格式（用户从Console复制的）
+    const parts = input.includes(',') ? input.split(',') : [input, '']
+    const cred = parts[0].trim()
+    const token = parts[1] ? parts[1].trim() : ''
+    
+    saveCredential(cred, token)
+    const gameData = await fetchGameData(cred, token)
+    const userData = await processGameData(gameData)
     router.push({ name: 'Dashboard' })
   } catch (e) {
-    error.value = e.message || '获取数据失败，请检查credential是否有效'
+    error.value = e.message || '获取数据失败，请检查凭证是否有效'
   } finally {
     loading.value = false
   }
