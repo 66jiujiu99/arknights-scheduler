@@ -14,14 +14,18 @@
       <!-- Tab: 手动输入 Credential -->
       <div v-if="tab === 'cred'">
         <ak-alert type="info">
-          <strong>如何获取 Credential？</strong><br>
+          <strong>一步获取凭证</strong><br>
           1. 打开 <a href="https://www.skland.com" target="_blank" style="color:#5398ff">森空岛官网</a> 并登录<br>
-          2. 按 F12 打开开发者工具 → Application → Local Storage<br>
-          3. 找到 <code>skland.com</code> 下的 <code>cred</code> 值，复制粘贴到下方
+          2. 按 F12 → Console（控制台）<br>
+          3. 粘贴以下命令并回车：<br>
+          <code style="display:block; padding:8px; margin:8px 0; background:var(--ak-bg-dark); border-radius:4px; font-size:12px; word-break:break-all">
+            copy(localStorage.getItem('SK_OAUTH_CRED_KEY'))
+          </code>
+          4. 自动复制到剪贴板，回到本页粘贴即可
         </ak-alert>
         <div class="ak-form-group">
           <label class="ak-label">Credential</label>
-          <input v-model="credInput" class="ak-input" placeholder="粘贴你的cred凭证" />
+          <input v-model="credInput" class="ak-input" placeholder="粘贴从森空岛复制的cred" />
         </div>
         <button class="ak-btn ak-btn-primary" style="width:100%; justify-content:center" @click="loginWithCred" :disabled="loading">
           <span v-if="loading" class="ak-spinner"></span>
