@@ -204,6 +204,7 @@ async function login() {
     html += '</tbody></table>'
     document.getElementById('tableWrap').innerHTML = html
     document.getElementById('resultCard').classList.add('show')
+    document.getElementById('scheduleCard').classList.add('show')
     
     // 存数据
     localStorage.setItem('ak_user_data', JSON.stringify({
