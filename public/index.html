@@ -250,12 +250,14 @@ const FACILITY_CFG = {
 function classifyMF(d){if(!d)return'通用';if(d.includes('源石'))return'源石碎片';if(d.includes('贵金属')||d.includes('赤金'))return'赤金';if(d.includes('作战记录'))return'作战记录';if(d.includes('技巧概要'))return'技巧概要';return'通用'}
 let baseSkillsCache=null
 async function loadBaseSkills(){if(baseSkillsCache)return baseSkillsCache;const r=await fetch('/data/baseSkills.json');baseSkillsCache=await r.json();return baseSkillsCache}
-function analyzeSkills(chars,skills){return(chars||[]).map(c=>{const sd=skills[c.charId];if(!sd)return{...c,baseSkills:{}};const fac={},moods=[],combos=[];let mfCat=null
+function analyzeSkills(chars,skills){return(chars||[]).map(c=>{const sd=skills[c.charId];if(!sd)return{...c,baseSkills:{}};const fac={},moods=[],combos=[],partners=[];let mfCat=null
   for(const[f,info]of Object.entries(sd)){if(['name','rarity'].includes(f))continue;const d=info.desc||'';fac[f]={type:info.type||'',value:info.value||0,desc:d}
   if(d.includes('心情每小时消耗')){const m=d.match(/心情每小时消耗([+-])([\d.]+)/);if(m)moods.push({facility:f,cost:parseFloat(m[1]+m[2])})}
-  if(f!=='dormitory'&&(d.includes('若')||d.includes('当')||d.includes('如果')||d.includes('同个')||d.includes('额外')))combos.push({facility:f,desc:d.slice(0,80)})
+  if(f!=='dormitory'&&(d.includes('若')||d.includes('当')||d.includes('如果')||d.includes('同个')||d.includes('额外'))){combos.push({facility:f,desc:d.slice(0,80)})
+    // 提取联动伙伴名
+    const ms=d.matchAll(/([^\s<]+)(?:进驻|在|与|和|入驻)/g);for(const m of ms)if(m[1].length>1)partners.push(m[1])}
   if(f==='manufacture')mfCat=classifyMF(d)}
-  return{...c,rarity:sd.rarity||c.rarity||1,baseSkills:fac,mfCat,moods,combos}})}
+  return{...c,rarity:sd.rarity||c.rarity||1,baseSkills:fac,mfCat,moods,combos,partners:[...new Set(partners)]}})}
 function pickMF(type,pool,count,cat){const a=pool.filter(o=>o.baseSkills&&o.baseSkills[type]&&o.mfCat===cat).sort((a,b)=>b.baseSkills[type].value-a.baseSkills[type].value)
   const b=pool.filter(o=>o.baseSkills&&o.baseSkills[type]&&o.mfCat!==cat).sort((a,b)=>b.baseSkills[type].value-a.baseSkills[type].value)
   const u=new Set(),r=[];let e=0
@@ -287,6 +289,13 @@ function generateSchedule(ud,skills){const chars=analyzeSkills(ud.chars||[],skil
     }
     fs.manufacture=[];for(let m=0;m<mfC;m++){const r=pickMF('manufacture',rot,3,cats[m%cats.length]);r.label=`制造站${m+1}(${cats[m%cats.length]})`;r.ctrlBonus=ctrlBonus;te+=r.efficiency}
     fs.trading=[];for(let t=0;t<trC;t++){const r=pickFac('trading',rot,3);r.label=`贸易站${t+1}`;r.ctrlBonus=ctrlBonus;te+=r.efficiency}
+    // 贸易站联动优化
+    if(fs.trading.length>1){for(let a=0;a<fs.trading.length;a++){for(let b=a+1;b<fs.trading.length;b++){
+      for(const oa of fs.trading[a].assigned){for(const ob of fs.trading[b].assigned){
+        if(oa.partners?.includes(ob.name)||ob.partners?.includes(oa.name)){
+          const idxA=fs.trading[a].assigned.indexOf(ob),idxB=fs.trading[b].assigned.indexOf(oa)
+          if(idxA>=0&&idxB>=0){const tmp=fs.trading[a].assigned[idxA];fs.trading[a].assigned[idxA]=fs.trading[b].assigned[idxB];fs.trading[b].assigned[idxB]=tmp}
+    }}}}}}
     fs.power=[];for(let p=0;p<2;p++){const r=pickFac('power',rot,2);r.label=`发电站${p+1}`;fs.power.push(r);te+=r.efficiency}
     fs.meeting=pickFac('meeting',rot,2);fs.training=pickFac('training',rot,1)
     let tm=0;for(const[f,d]of Object.entries(fs)){const items=d.assigned||(Array.isArray(d)?d.flatMap(x=>x.assigned):[d])||[];const list=Array.isArray(d)?d:[d];for(const i of list){const ops=i.assigned||[i];for(const o of ops)if(o.moodCost)tm+=o.moodCost.cost}}
