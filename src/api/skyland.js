@@ -16,14 +16,22 @@ export function setCorsProxy(url) {
 }
 
 function resolveUrl(url) {
-  if (!corsProxy) return url
-  
-  // 带proxy时，将完整URL转为worker路径
-  let path = url
-  if (url.startsWith(SKYLAND_API)) path = 'skland/' + url.slice(SKYLAND_API.length)
-  else if (url.startsWith(HYPERGRYPH_API)) path = 'auth/' + url.slice(HYPERGRYPH_API.length)
-  
-  return corsProxy.replace(/\/$/, '') + '/api/' + path
+  // 如果当前在 Pages.dev 域名下，用相对路径（无CORS）
+  if (typeof window !== 'undefined' && 
+      (window.location.hostname.includes('pages.dev') || window.location.hostname.includes('localhost'))) {
+    let path = url
+    if (url.startsWith(SKYLAND_API)) path = 'skland/' + url.slice(SKYLAND_API.length)
+    else if (url.startsWith(HYPERGRYPH_API)) path = 'auth/' + url.slice(HYPERGRYPH_API.length)
+    return '/api/' + path
+  }
+  // 有代理时走 Worker
+  if (corsProxy) {
+    let path = url
+    if (url.startsWith(SKYLAND_API)) path = 'skland/' + url.slice(SKYLAND_API.length)
+    else if (url.startsWith(HYPERGRYPH_API)) path = 'auth/' + url.slice(HYPERGRYPH_API.length)
+    return corsProxy.replace(/\/$/, '') + '/api/' + path
+  }
+  return url
 }
 
 async function request(url, options = {}) {
