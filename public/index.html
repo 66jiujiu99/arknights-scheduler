@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>罗德岛智能排班系统</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Segoe UI',sans-serif;min-height:100vh}
+.page{max-width:480px;margin:0 auto;padding:40px 20px}
+.logo{text-align:center;margin-bottom:32px}
+.logo h1{color:#d4a843;font-size:24px;letter-spacing:2px}
+.logo p{color:#888;font-size:13px;margin-top:6px}
+.card{background:#16213e;border-radius:12px;border:1px solid #2a3a5e;padding:28px;margin-bottom:16px}
+.card h2{font-size:15px;color:#d4a843;margin-bottom:16px}
+label{display:block;font-size:13px;color:#aaa;margin-bottom:6px}
+input{width:100%;padding:10px 14px;background:#0f1629;border:1px solid #2a3a5e;border-radius:8px;color:#e0e0e0;font-size:14px;outline:none;transition:border .2s}
+input:focus{border-color:#5398ff}
+.steps{background:#0f1629;border-radius:8px;padding:14px;font-size:13px;color:#ccc;line-height:1.8;margin-bottom:16px}
+.steps code{display:block;background:#1a1a2e;padding:10px;border-radius:6px;font-size:12px;color:#5398ff;word-break:break-all;margin:8px 0}
+.btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:14px;cursor:pointer;transition:opacity .2s;margin-top:4px}
+.btn-primary{background:#d4a843;color:#1a1a2e;font-weight:600}
+.btn-primary:hover{opacity:.9}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.status{padding:10px 14px;border-radius:6px;font-size:13px;margin-top:12px;display:none}
+.status.error{display:block;background:#3d1a1a;border:1px solid #6b2a2a;color:#ff6b6b}
+.status.success{display:block;background:#1a3d1a;border:1px solid #2a6b2a;color:#6bff6b}
+.status.info{display:block;background:#1a2a3d;border:1px solid #2a4a6b;color:#6bb5ff}
+.status .detail{font-size:11px;color:#888;margin-top:4px}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid #1a1a2e;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.result{display:none;margin-top:12px}
+.result.show{display:block}
+.result pre{background:#0f1629;padding:12px;border-radius:6px;font-size:11px;color:#6bb5ff;overflow-x:auto;max-height:200px}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="logo">
+    <h1>◇ 罗德岛智能排班系统</h1>
+    <p>基于森空岛 API 的自动排班工具</p>
+  </div>
+  
+  <div class="card">
+    <h2>🔐 登录</h2>
+    <div class="steps">
+      <strong>一步获取凭证</strong><br>
+      1. 打开 <a href="https://www.skland.com" target="_blank" style="color:#5398ff">森空岛官网</a> 并登录<br>
+      2. F12 → Console → 粘贴以下命令回车：<br>
+      <code>copy(localStorage.getItem('SK_OAUTH_CRED_KEY'))</code>
+      3. 回到本页粘贴到下方输入框
+    </div>
+    <label>Credential</label>
+    <input id="credInput" placeholder="粘贴从森空岛复制的 cred" value=""/>
+    <button id="loginBtn" class="btn btn-primary" onclick="login()">获取干员数据</button>
+    <div id="status" class="status"></div>
+  </div>
+  
+  <div id="result" class="card result">
+    <h2>📊 数据概览</h2>
+    <pre id="resultContent"></pre>
+  </div>
+</div>
+
+<script>
+// ===== 签名工具 =====
+const hex='0123456789abcdef'
+function SHA256(msg){
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2],H0=[1779033703,3144134277,1013904242,2773480762,1359893119,2600822924,528734635,1541459225]
+  const enc=new TextEncoder(),raw=typeof msg=='string'?enc.encode(msg):msg,bits=raw.length*8,padLen=((raw.length+9+63)&~63),padded=new Uint8Array(padLen)
+  padded.set(raw),padded[raw.length]=0x80
+  const dv=new DataView(padded.buffer);dv.setBigUint64(padLen-8,BigInt(bits),false)
+  const w=new Uint32Array(64);let H=H0.slice()
+  const rr=(a,n)=>(a>>>n)|(a<<(32-n))
+  for(let b=0;b<padLen;b+=64){
+    for(let j=0;j<16;j++)w[j]=dv.getUint32(b+j*4,false)
+    for(let j=16;j<64;j++){const s0=rr(w[j-15],7)^rr(w[j-15],18)^(w[j-15]>>>3),s1=rr(w[j-2],17)^rr(w[j-2],19)^(w[j-2]>>>10);w[j]=(w[j-16]+s0+w[j-7]+s1)|0}
+    let [a,b,c,d,e,f,g,h]=H
+    for(let j=0;j<64;j++){const S1=rr(e,6)^rr(e,11)^rr(e,25),ch=(e&f)^(~e&g),t1=(h+S1+ch+K[j]+w[j])|0,S0=rr(a,2)^rr(a,13)^rr(a,22),maj=(a&b)^(a&c)^(b&c);h=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+S0+maj)|0}
+    H=H.map((v,i)=>(v+[a,b,c,d,e,f,g,h][i])|0)
+  }
+  const out=[]
+  for(let i=0;i<8;i++)for(let j=3;j>=0;j--)out.push((H[i]>>>(j*8))&255)
+  return out
+}
+function HMAC(k,m){const e=new TextEncoder(),kb=[...typeof k=='string'?[...e.encode(k)]:k],ka=kb.length>64?SHA256(kb):kb,kp=new Array(64).fill(0);for(let i=0;i<ka.length&&i<64;i++)kp[i]=ka[i];return SHA256(kp.map(b=>b^0x5c).concat(SHA256(kp.map(b=>b^0x36).concat([...e.encode(m)]))))}
+function MD5(s){
+  function F(x,y,z){return(x&y)|(~x&z)};function G(x,y,z){return(x&z)|(y&~z)};function Hf(x,y,z){return x^y^z};function I(x,y,z){return y^(x|~z)};const rol=(v,n)=>(v<<n)|(v>>>(32-n))
+  const T=[0xd76aa478,0xe8c7b756,0x242070db,0xc1bdceee,0xf57c0faf,0x4787c62a,0xa8304613,0xfd469501,0x698098d8,0x8b44f7af,0xffff5bb1,0x895cd7be,0x6b901122,0xfd987193,0xa679438e,0x49b40821,0xf61e2562,0xc040b340,0x265e5a51,0xe9b6c7aa,0xd62f105d,0x02441453,0xd8a1e681,0xe7d3fbc8,0x21e1cde6,0xc33707d6,0xf4d50d87,0x455a14ed,0xa9e3e905,0xfcefa3f8,0x676f02d9,0x8d2a4c8a,0xfffa3942,0x8771f681,0x6d9d6122,0xfde5380c,0xa4beea44,0x4bdecfa9,0xf6bb4b60,0xbebfbc70,0x289b7ec6,0xeaa127fa,0xd4ef3085,0x04881d05,0xd9d4d039,0xe6db99e5,0x1fa27cf8,0xc4ac5665,0xf4292244,0x432aff97,0xab9423a7,0xfc93a039,0x655b59c3,0x8f0ccc92,0xffeff47d,0x85845dd1,0x6fa87e4f,0xfe2ce6e0,0xa3014314,0x4e0811a1,0xf7537e82,0xbd3af235,0x2ad7d2bb,0xeb86d391],S=[7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21]
+  const e=new TextEncoder(),b=e.encode(s),l=b.length,n=(((l+8)>>6)+1)*16,w=new Array(n).fill(0)
+  for(let i=0;i<l;i++)w[i>>2]|=(b[i]&255)<<((i%4)*8);w[l>>2]|=0x80<<((l%4)*8);w[n-2]=l*8;w[n-1]=Math.floor(l/0x100000000)
+  let [a,b0,c,d]=[0x67452301,0xefcdab89,0x98badcfe,0x10325476]
+  for(let i=0;i<n;i+=16){let[A,B,C,D]=[a,b0,c,d]
+    for(let j=0;j<64;j++){const fn=j<16?F:j<32?G:j<48?Hf:I,g=j<16?j:j<32?(5*j+1)%16:j<48?(3*j+5)%16:(7*j)%16,t=d;d=c;c=b0;b0=b0+rol((a+fn(b0,c,d)+w[i+g]+T[j])|0,S[j]);a=t}
+    a=(a+A)>>>0;b0=(b0+B)>>>0;c=(c+C)>>>0;d=(d+D)>>>0}
+  let r=''
+  for(const n of[a,b0,c,d])for(let i=0;i<4;i++){const byte=(n>>>(i*8))&255;r+=hex[(byte>>4)&15]+hex[byte&15]}
+  return r
+}
+function sign(path,params,token){
+  const ts=String(Math.floor((Date.now()-300)/1000)),h={platform:'3',timestamp:ts,dId:'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0',vName:'1.2.0'}
+  const text=path+(params||'')+ts+JSON.stringify(h),hmacB=HMAC(token,text),hmacH=hmacB.map(b=>b.toString(16).padStart(2,'0')).join(''),sg=MD5(hmacH)
+  return{timestamp:ts,sign:sg,headers:h}
+}
+
+// ===== 业务逻辑 =====
+async function fetchWithLog(url,opt){
+  const r=await fetch(url,opt)
+  const t=await r.text()
+  let d;try{d=JSON.parse(t)}catch{d={code:-1,message:t.slice(0,100)}}
+  return d
+}
+
+async function getGameData(cred){
+  setStatus('info','正在连接森空岛...')
+  
+  // 1. 刷新token
+  const r1=await fetchWithLog('/api/sw/v1/auth/refresh',{headers:{cred}})
+  if(r1.code!==0)throw new Error('刷新token失败: '+(r1.message||''))
+  const token=r1.data.token
+  setStatus('info','已获取签名token...')
+  
+  // 2. 获取绑定
+  const s1=sign('/api/v1/game/player/binding','',token)
+  const r2=await fetchWithLog('/api/sk/v1/game/player/binding',{headers:{cred,...s1.headers,sign:s1.sign}})
+  if(r2.code!==0)throw new Error('获取绑定失败: '+(r2.message||''))
+  let akUid='0'
+  for(const a of(r2.data?.list||[]))if(a.appCode==='arknights'){akUid=a.bindingList[0].uid;break}
+  if(akUid==='0')throw new Error('未找到明日方舟角色绑定')
+  setStatus('info','已找到角色UID: '+akUid)
+  
+  // 3. 获取干员数据
+  const q='uid='+akUid,s2=sign('/api/v1/game/player/info',q,token)
+  const r3=await fetchWithLog('/api/sk/v1/game/player/info?'+q,{headers:{cred,...s2.headers,sign:s2.sign}})
+  if(r3.code!==0)throw new Error('获取数据失败: '+(r3.message||''))
+  return r3.data
+}
+
+function setStatus(type,msg){
+  const el=document.getElementById('status')
+  el.className='status '+type
+  el.innerHTML=msg
+}
+
+async function login(){
+  const btn=document.getElementById('loginBtn')
+  const cred=document.getElementById('credInput').value.trim()
+  if(!cred){setStatus('error','请输入credential');return}
+  
+  btn.disabled=true
+  btn.innerHTML='<span class="spinner"></span>获取中...'
+  
+  try{
+    const data=await getGameData(cred)
+    const chars=data.chars||[]
+    const building=data.building||{}
+    
+    setStatus('success','✅ 获取成功！'+chars.length+'名干员')
+    
+    // 显示数据概览
+    const result=document.getElementById('result')
+    const content=document.getElementById('resultContent')
+    content.textContent=JSON.stringify({
+      nickname:data.status?.nickName||'博士',
+      level:data.status?.level||0,
+      干员数:chars.length,
+      基建:Object.keys(building).filter(k=>k!=='tiredChars'&&k!=='furniture'&&k!=='corridors').join(', '),
+      制造站:building.manufactures?.length||0,
+      贸易站:building.tradings?.length||0,
+      宿舍:building.dormitories?.length||0,
+    },null,2)
+    result.classList.add('show')
+    
+    // 存入localStorage
+    localStorage.setItem('ak_user_data',JSON.stringify({
+      nickname:data.status?.nickName||'博士',
+      level:data.status?.level||0,
+      uid:akUid||'',
+      chars:chars.map(c=>({charId:c.id||c.charId,rarity:c.rarity||1,level:c.level||1,elite:c.evolvePhase||0,potential:Math.ceil((c.potentialRank||0)+1),own:true})),
+      building:{manufactures:building.manufactures||[],tradings:building.tradings||[],dormitories:building.dormitories||[],power:building.power||null,meeting:building.meeting||null,training:building.training||null,tiredChars:building.tiredChars||[],labor:building.labor||{}},
+    }))
+    
+  }catch(e){
+    setStatus('error','❌ '+e.message)
+    console.error(e)
+  }finally{
+    btn.disabled=false
+    btn.innerHTML='获取干员数据'
+  }
+}
+</script>
+</body>
+</html>
