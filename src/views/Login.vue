@@ -141,34 +141,10 @@ const codeSending = ref(false)
 const codeCooldown = ref(0)
 const needProxy = ref(false)
 
-async function processGameData(gameData) {
-  // 提取干员列表
-  const chars = gameData?.chars || []
-  const building = gameData?.building || {}
-  
-  const userData = {
-    nickname: gameData?.status?.name || '博士',
-    level: gameData?.status?.level || 0,
-    chars: chars.map(c => ({
-      id: c.charId,
-      name: c.name || c.charId,
-      rarity: c.rarity || 1,
-      level: c.level || 1,
-      potential: c.potential || 1,
-      evolve: c.evolvePhase || 0,
-    })),
-    building: {
-      tradings: building.tradings || [],
-      manufactures: building.manufactures || [],
-      dormitories: building.dormitories || [],
-      power: building.power || {},
-      meeting: building.meeting || {},
-      training: building.training || {},
-      tiredChars: building.tiredChars || [],
-      labor: building.labor || {},
-    },
+async function processGameData(userData) {
+  if (!userData.chars || userData.chars.length === 0) {
+    throw new Error('未获取到任何干员数据')
   }
-  
   localStorage.setItem('ak_user_data', JSON.stringify(userData))
   return userData
 }
@@ -200,8 +176,8 @@ async function loginWithCred() {
     const cred = parts[0].trim()
     const token = parts[1] ? parts[1].trim() : ''
     
-    saveCredential(cred, token)
-    const gameData = await fetchGameData(cred, token)
+    saveCredential(cred)
+    const gameData = await fetchGameData(cred)
     const userData = await processGameData(gameData)
     router.push({ name: 'Dashboard' })
   } catch (e) {
