@@ -80,11 +80,17 @@
 
       <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--ak-border)">
         <details style="font-size:13px; color:var(--ak-text-dim); cursor:pointer">
-          <summary>CORS 代理配置（仅登录需要）</summary>
+          <summary>CORS 代理配置 — 启用账号密码/验证码登录</summary>
           <div style="margin-top:8px">
-            <p style="margin-bottom:8px">如果登录请求被浏览器跨域拦截，可以配置一个 CORS 代理：</p>
-            <input v-model="proxyUrl" class="ak-input" placeholder="https://你的cors-proxy.workers.dev/" style="font-size:12px" />
-            <button class="ak-btn ak-btn-secondary" style="margin-top:8px; font-size:12px; padding:6px 12px" @click="saveProxy">保存代理配置</button>
+            <p style="margin-bottom:8px">账号密码和验证码登录需要解决跨域问题。部署一个 Cloudflare Worker 做登录代理：</p>
+            <ol style="margin:8px 0 8px 20px; line-height:1.8">
+              <li>打开 <a href="https://dash.cloudflare.com/" target="_blank" style="color:#5398ff">Cloudflare Dashboard</a> → Workers & Pages</li>
+              <li>创建一个新的 Worker，代码用仓库中 <code>login-proxy/worker.js</code> 的内容</li>
+              <li>部署后把 Worker 地址粘贴到下方</li>
+            </ol>
+            <input v-model="proxyUrl" class="ak-input" placeholder="https://你的worker名.workers.dev/" style="font-size:12px" />
+            <button class="ak-btn ak-btn-secondary" style="margin-top:8px; font-size:12px; padding:6px 12px" @click="saveProxy">保存代理地址</button>
+            <p style="margin-top:8px; color:var(--ak-text-dim)">或用 <strong>Credential 方式</strong>登录（无需配置，从森空岛网站复制粘贴即可）</p>
           </div>
         </details>
       </div>

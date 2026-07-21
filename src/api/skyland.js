@@ -7,7 +7,7 @@
 const HYPERGRYPH_API = 'https://as.hypergryph.com'
 const SKYLAND_API = 'https://www.skland.com/api/v1'
 
-// CORS 代理 — 用户可配置
+// CORS 代理 — 用户可配置（使用部署的Cloudflare Worker）
 let corsProxy = localStorage.getItem('ak_cors_proxy') || ''
 
 function setCorsProxy(url) {
@@ -15,8 +15,19 @@ function setCorsProxy(url) {
   localStorage.setItem('ak_cors_proxy', url)
 }
 
+function apiUrl(path) {
+  if (corsProxy) {
+    // Cloudflare Worker 模式：/api/auth/xxx → worker 转发
+    return corsProxy.replace(/\/$/, '') + '/api/' + path
+  }
+  // 直连模式（需要CORS插件或本地环境）
+  if (path.startsWith('auth/')) return `${HYPERGRYPH_API}/${path}`
+  if (path.startsWith('skland/')) return `${SKYLAND_API}/${path.replace('skland/', '')}`
+  return `${HYPERGRYPH_API}/${path}`
+}
+
 async function request(url, options = {}) {
-  const targetUrl = corsProxy ? corsProxy + encodeURIComponent(url) : url
+  const targetUrl = corsProxy ? corsProxy.replace(/\/$/, '') + '/api/' + url : url
   const res = await fetch(targetUrl, {
     ...options,
     headers: {
