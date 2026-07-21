@@ -39,16 +39,23 @@ function resolveUrl(url) {
 
 async function request(url, options = {}) {
   const targetUrl = resolveUrl(url)
-  const res = await fetch(targetUrl, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': 'Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 31; ) Okhttp/4.11.0',
-      ...options.headers,
-    },
-  })
-  const text = await res.text()
-  try { return JSON.parse(text) } catch { return { code: -1, message: text } }
+  console.log('[API] 请求:', targetUrl, options.method || 'GET')
+  try {
+    const res = await fetch(targetUrl, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 31; ) Okhttp/4.11.0',
+        ...options.headers,
+      },
+    })
+    const text = await res.text()
+    console.log('[API] 响应:', res.status, text.slice(0,200))
+    try { return JSON.parse(text) } catch { return { code: -1, message: text } }
+  } catch (e) {
+    console.error('[API] 异常:', e)
+    return { code: -1, message: e.message }
+  }
 }
 
 /**
