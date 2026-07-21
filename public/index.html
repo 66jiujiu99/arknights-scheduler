@@ -252,7 +252,7 @@ async function loadBaseSkills(){if(baseSkillsCache)return baseSkillsCache;const 
 function analyzeSkills(chars,skills){return(chars||[]).map(c=>{const sd=skills[c.charId];if(!sd)return{...c,baseSkills:{}};const fac={},moods=[],combos=[];let mfCat=null
   for(const[f,info]of Object.entries(sd)){if(['name','rarity'].includes(f))continue;const d=info.desc||'';fac[f]={type:info.type||'',value:info.value||0,desc:d}
   if(d.includes('心情每小时消耗')){const m=d.match(/心情每小时消耗([+-])([\d.]+)/);if(m)moods.push({facility:f,cost:parseFloat(m[1]+m[2])})}
-  if(d.includes('若')||d.includes('当')||d.includes('如果'))combos.push({facility:f,desc:d.slice(0,60)})
+  if(f!=='dormitory'&&(d.includes('若')||d.includes('当')||d.includes('如果')||d.includes('同个')||d.includes('额外')))combos.push({facility:f,desc:d.slice(0,80)})
   if(f==='manufacture')mfCat=classifyMF(d)}
   return{...c,rarity:sd.rarity||c.rarity||1,baseSkills:fac,mfCat,moods,combos}})}
 function pickMF(type,pool,count,cat){const a=pool.filter(o=>o.baseSkills&&o.baseSkills[type]&&o.mfCat===cat).sort((a,b)=>b.baseSkills[type].value-a.baseSkills[type].value)
@@ -296,7 +296,7 @@ async function runSchedule(){const btn=document.getElementById('scheduleBtn');bt
       for(const pw of(s.facilities.power||[])){h+=`<div class="facility-card"><h4>⚡ ${pw.label}</h4>`;for(const o of(pw.assigned||[])){const c=o.skill.value>0?'eff-good':'eff';h+=`<div class="slot"><span class="name">${o.name}</span><span class="${c}">${o.skill.desc||''}</span></div>`}h+=`<div class="eff-total" style="padding:4px;font-size:11px">效率: ${pw.efficiency.toFixed(1)}</div></div>`}
       if(s.facilities.meeting?.assigned){h+=`<div class="facility-card"><h4>🤝 会客室</h4>`;for(const o of s.facilities.meeting.assigned){const c=o.skill.value>0?'eff-good':'eff';h+=`<div class="slot"><span class="name">${o.name}</span><span class="${c}">${o.skill.desc||''}</span></div>`}h+=`</div>`}
       if(s.facilities.training?.assigned){h+=`<div class="facility-card"><h4>🎯 训练室</h4>`;for(const o of s.facilities.training.assigned){const c=o.skill.value>0?'eff-good':'eff';h+=`<div class="slot"><span class="name">${o.name}</span><span class="${c}">${o.skill.desc||''}</span></div>`}h+=`</div>`}
-      h+=`<div class="eff-total">生产效率: ${s.efficiency.toFixed(1)} | 心情消耗: ${s.moodCost.toFixed(2)}/h</div></div>`
+      h+=`<div class="eff-total">生产效率: ${s.efficiency.toFixed(1)} | 💚心情: ${s.moodCost.toFixed(2)}/h ${s.moodCost>6?'⚠️偏高':''}</div></div>`
     }
     h+=`<div class="eff-total" style="margin-top:4px">两班总效率: ${result.totalEfficiency.toFixed(1)}</div>`
     document.getElementById('scheduleResult').innerHTML=h;document.getElementById('scheduleCard').classList.add('show')
