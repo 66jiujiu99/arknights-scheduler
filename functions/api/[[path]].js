@@ -13,6 +13,8 @@ export async function onRequest(context) {
   let targetUrl;
   if (path.startsWith('auth/')) {
     targetUrl = 'https://as.hypergryph.com/' + path;
+  } else if (path.startsWith('skland-web/')) {
+    targetUrl = 'https://zonai.skland.com/web/' + path.replace('skland-web/', '') + queryStr;
   } else if (path.startsWith('skland/')) {
     targetUrl = 'https://zonai.skland.com/api/v1/' + path.replace('skland/', '') + queryStr;
   } else {

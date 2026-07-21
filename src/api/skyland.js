@@ -24,12 +24,14 @@ function resolveUrl(url) {
     let path = url
     if (url.startsWith(SKYLAND_API)) path = 'skland/' + url.slice(SKYLAND_API.length)
     else if (url.startsWith(HYPERGRYPH_API)) path = 'auth/' + url.slice(HYPERGRYPH_API.length)
+    else if (url.startsWith('https://zonai.skland.com/web/')) path = 'skland-web/' + url.slice('https://zonai.skland.com/web/'.length)
     return '/api/' + path
   }
   if (corsProxy) {
     let path = url
     if (url.startsWith(SKYLAND_API)) path = 'skland/' + url.slice(SKYLAND_API.length)
     else if (url.startsWith(HYPERGRYPH_API)) path = 'auth/' + url.slice(HYPERGRYPH_API.length)
+    else if (url.startsWith('https://zonai.skland.com/web/')) path = 'skland-web/' + url.slice('https://zonai.skland.com/web/'.length)
     return corsProxy.replace(/\/$/, '') + '/api/' + path
   }
   return url
@@ -81,8 +83,16 @@ export function getSavedCredential() {
  * 获取游戏数据
  * 使用 cred(认证) + token(签名) 调用 zonai.skland.com
  */
-export async function fetchGameData(cred, token) {
-  // 1. 获取角色绑定列表
+export async function fetchGameData(cred, _token) {
+  // 1. 先刷新签名token
+  const tokenResp = await request(SKYLAND_API.replace('/api/v1','') + '/web/v1/auth/refresh', {
+    headers: { cred }
+  })
+  if (tokenResp.code !== 0) throw new Error('刷新签名token失败: ' + (tokenResp.message || ''))
+  const token = tokenResp.data.token
+  saveCredential(cred, token)
+  
+  // 2. 获取角色绑定列表
   const bindingPath = '/api/v1/game/player/binding'
   const bindingSign = generateSklandSign(bindingPath, '', token)
   
