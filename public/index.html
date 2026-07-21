@@ -79,7 +79,7 @@ tr:hover td{background:rgba(212,168,67,.04)}
     </div>
     <label>Credential</label>
     <input id="credInput" placeholder="粘贴从森空岛复制的 cred"/>
-    <button id="loginBtn" class="btn btn-primary" onclick="login()">获取干员数据</button>
+    <button id="loginBtn" class="btn btn-primary" type="button">获取干员数据</button>
     <div id="status" class="status"></div>
   </div>
   
@@ -207,6 +207,10 @@ async function login() {
     btn.innerHTML = '获取干员数据'
   }
 }
+</script>
+<script>
+document.getElementById('loginBtn').addEventListener('click', login)
+document.getElementById('credInput').addEventListener('keydown', e => { if(e.key==='Enter') login() })
 </script>
 </body>
 </html>
