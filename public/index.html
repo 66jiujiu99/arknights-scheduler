@@ -325,7 +325,14 @@ async function runSchedule(){const btn=document.getElementById('scheduleBtn');bt
 }
 function showShift(el,id){document.querySelectorAll('.shift-tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');document.querySelectorAll('[id^="shift"]').forEach(d=>d.style.display='none');document.getElementById(id).style.display='block'}
 </script>
-<script src="/mf-config.js"></script>
+<script>
+/* MF Config */
+const MF_CATS = ["赤金","作战记录","源石碎片","技巧概要","仓库","通用"];
+function initMfConfig(){const r=document.getElementById("mfConfigRow");if(!r)return;let c=JSON.parse(localStorage.getItem("ak_mf_config")||"null")||["赤金","作战记录","源石碎片","通用","赤金"];renderMfConfig(c)}
+function renderMfConfig(c){const r=document.getElementById("mfConfigRow");let h="";for(let i=0;i<c.length;i++)h+='<div class="mf-chip" data-idx="'+i+'" onclick="cycleMfCat('+i+')" style="cursor:pointer;padding:3px 8px;border-radius:4px;font-size:11px;background:rgba(15,22,41,.6);border:1px solid rgba(42,58,94,.3);color:#d4a843;letter-spacing:.5px">🏭'+(i+1)+' '+c[i]+'</div>';r.innerHTML=h}
+function cycleMfCat(i){let c=JSON.parse(localStorage.getItem("ak_mf_config")||"null")||["赤金","作战记录","源石碎片","通用","赤金"];const ci=MF_CATS.indexOf(c[i]);c[i]=MF_CATS[(ci+1)%MF_CATS.length];localStorage.setItem("ak_mf_config",JSON.stringify(c));renderMfConfig(c)}
+function refreshMfConfig(n){let c=JSON.parse(localStorage.getItem("ak_mf_config")||"null");if(!c||c.length!==n){c=[];const d=["赤金","作战记录","源石碎片","通用","赤金"];for(let i=0;i<n;i++)c.push(d[i%d.length]||"通用");localStorage.setItem("ak_mf_config",JSON.stringify(c))}renderMfConfig(c)}
+</script>
 <script>
 document.getElementById('loginBtn').addEventListener('click', login)
 document.getElementById('scheduleBtn').addEventListener('click', runSchedule)
