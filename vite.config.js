@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
-  base: '/arknights-scheduler/',
+  base: process.env.CF_PAGES === '1' ? '/' : '/arknights-scheduler/',
   build: {
     outDir: 'dist',
   },
