@@ -168,6 +168,12 @@ export async function fetchGameData(cred) {
   return userData
 }
 
+// 保留兼容的登录函数（后续可删，但 Login.vue 还引用）
+export async function loginByPassword() { throw new Error('请使用森空岛Credential登录') }
+export async function loginBySmsCode() { throw new Error('请使用森空岛Credential登录') }
+export async function sendSmsCode() { throw new Error('请使用森空岛Credential登录') }
+export async function exchangeCredential() { throw new Error('请使用森空岛Credential登录') }
+
 // 保存/读取凭证
 export function saveCredential(cred, token) {
   if (cred) localStorage.setItem('ak_cred', cred)
