@@ -5,7 +5,8 @@
       <div class="ak-login-subtitle">登录森空岛账号以同步干员数据</div>
 
       <div class="ak-tab-bar">
-        <div class="ak-tab" :class="{ active: tab === 'cred' }" @click="tab='cred'">Credential</div>
+        <div class="ak-tab" :class="{ active: tab === 'cred' }" @click="tab='cred'">Skland凭证</div>
+        <div class="ak-tab" :class="{ active: tab === 'akcenter' }" @click="tab='akcenter'">官网Cookie</div>
         <div class="ak-tab" :class="{ active: tab === 'password' }" @click="tab='password'">账号密码</div>
         <div class="ak-tab" :class="{ active: tab === 'sms' }" @click="tab='sms'">验证码</div>
       </div>
@@ -23,6 +24,24 @@
           <input v-model="credInput" class="ak-input" placeholder="粘贴你的cred凭证" />
         </div>
         <button class="ak-btn ak-btn-primary" style="width:100%; justify-content:center" @click="loginWithCred" :disabled="loading">
+          <span v-if="loading" class="ak-spinner"></span>
+          <span v-else>获取干员数据</span>
+        </button>
+      </div>
+
+      <!-- Tab: 官网Cookie -->
+      <div v-if="tab === 'akcenter'">
+        <ak-alert type="info">
+          <strong>使用明日方舟官网的登录状态</strong><br>
+          1. 打开 <a href="https://ak.hypergryph.com/user/home" target="_blank" style="color:#5398ff">明日方舟官网个人中心</a> 并确保已登录<br>
+          2. 按 F12 打开开发者工具 → Application → Cookies<br>
+          3. 找到 <code>ak.hypergryph.com</code> 下的 <code>ak-user-center</code>，复制值粘贴到下方
+        </ak-alert>
+        <div class="ak-form-group">
+          <label class="ak-label">ak-user-center 值</label>
+          <input v-model="akCookieInput" class="ak-input" placeholder="粘贴ak-user-center的值" />
+        </div>
+        <button class="ak-btn ak-btn-primary" style="width:100%; justify-content:center" @click="loginWithAkCookie" :disabled="loading">
           <span v-if="loading" class="ak-spinner"></span>
           <span v-else>获取干员数据</span>
         </button>
@@ -102,6 +121,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { loginByPassword, loginBySmsCode, sendSmsCode, exchangeCredential, fetchGameData, saveCredential, setCorsProxy } from '../api/skyland.js'
+import { loginWithAkcookie } from '../api/akcenter.js'
 
 const router = useRouter()
 const tab = ref('cred')
@@ -109,6 +129,7 @@ const phone = ref('')
 const password = ref('')
 const smsCode = ref('')
 const credInput = ref('')
+const akCookieInput = ref('')
 const proxyUrl = ref(localStorage.getItem('ak_cors_proxy') || '')
 const loading = ref(false)
 const error = ref('')
@@ -146,6 +167,22 @@ async function processGameData(gameData) {
   
   localStorage.setItem('ak_user_data', JSON.stringify(userData))
   return userData
+}
+
+async function loginWithAkCookie() {
+  error.value = ''
+  if (!akCookieInput.value.trim()) { error.value = '请粘贴 ak-user-center 的值'; return }
+  loading.value = true
+  try {
+    const result = await loginWithAkcookie(akCookieInput.value.trim())
+    saveCredential(result.cred)
+    const userData = await processGameData(result.data)
+    router.push({ name: 'Dashboard' })
+  } catch (e) {
+    error.value = e.message || '获取数据失败'
+  } finally {
+    loading.value = false
+  }
 }
 
 async function loginWithCred() {
