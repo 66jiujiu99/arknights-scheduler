@@ -261,11 +261,17 @@ function pickMF(type,pool,count,cat){const a=pool.filter(o=>o.baseSkills&&o.base
   for(const l of[a,b]){for(const o of l){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({name:o.name,rarity:o.rarity,skill:o.baseSkills[type],moodCost:o.moods?.find(m=>m.facility===type)});e+=o.baseSkills[type]?.value||0}}
   for(const o of pool){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({name:o.name,rarity:o.rarity,skill:{type:'general',value:0,desc:'通用'}})}
   while(r.length<count)r.push({name:'空位',rarity:1,skill:{type:'empty',value:0,desc:'待分配'}});return{assigned:r,efficiency:e}}
-function pickFac(type,pool,count){const a=pool.filter(o=>o.baseSkills&&o.baseSkills[type]).sort((a,b)=>b.baseSkills[type].value-a.baseSkills[type].value)
+function pickFac(type,pool,count){if(type==='control'){const sorted=[...pool].sort((a,b)=>{const aC=a.combos?.length||0,bC=b.combos?.length||0;if(aC!==bC)return bC-aC
+  const aS=Object.keys(a.baseSkills||{}).length,bS=Object.keys(b.baseSkills||{}).length;if(aS!==bS)return aS-bS;return b.rarity-a.rarity});return pickGeneric(sorted,count)}
+  const a=pool.filter(o=>o.baseSkills&&o.baseSkills[type]).sort((a,b)=>b.baseSkills[type].value-a.baseSkills[type].value)
   const u=new Set(),r=[];let e=0
   for(const o of a){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({name:o.name,rarity:o.rarity,skill:o.baseSkills[type],moodCost:o.moods?.find(m=>m.facility===type)});e+=o.baseSkills[type]?.value||0}
-  for(const o of pool){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({name:o.name,rarity:o.rarity,skill:{type:'general',value:0,desc:'通用'}})}
-  while(r.length<count)r.push({name:'空位',rarity:1,skill:{type:'empty',value:0,desc:'待分配'}});return{assigned:r,efficiency:e}}
+  for(const o of pool){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({name:o.name,rarity:o.rarity,skill:{type:'general',value:0,desc:'通用'},moodCost:null})}
+  while(r.length<count)r.push({name:'空位',rarity:1,skill:{type:'empty',value:0,desc:'待分配'},moodCost:null});return{assigned:r,efficiency:e}}
+function pickGeneric(pool,count){const u=new Set(),r=[];let e=0
+  for(const o of pool){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({name:o.name,rarity:o.rarity,skill:{type:'general',value:0,desc:'通用'},moodCost:null});e+=0}
+  for(const o of pool){if(r.length>=count)break;if(u.has(o.charId))continue;u.add(o.charId);r.push({name:o.name,rarity:o.rarity,skill:{type:'general',value:0,desc:'通用'},moodCost:null})}
+  while(r.length<count)r.push({name:'空位',rarity:1,skill:{type:'empty',value:0,desc:'待分配'},moodCost:null});return{assigned:r,efficiency:e}}
 function generateSchedule(ud,skills){const chars=analyzeSkills(ud.chars||[],skills),bld=ud.building||{}
   const mfC=Math.max((bld.manufactures||[]).length,2),trC=Math.max((bld.tradings||[]).length,1),cats=['赤金','作战记录','源石碎片','通用','赤金']
   const scs=[];for(let s=0;s<2;s++){const pool=[...chars],off=Math.floor(pool.length/2)*s,rot=[...pool.slice(off),...pool.slice(0,off)]
