@@ -31,6 +31,10 @@
           <span v-if="loading" class="ak-spinner"></span>
           <span v-else>获取干员数据</span>
         </button>
+        <div style="margin-top:8px; font-size:12px; color:var(--ak-text-dim); text-align:center">
+          <span style="cursor:pointer" @click="testApi">测试API连接</span>
+          <span v-if="testResult" style="margin-left:8px; color:var(--ak-accent)">{{ testResult }}</span>
+        </div>
       </div>
 
       <!-- Tab: 官网Cookie -->
@@ -140,6 +144,25 @@ const error = ref('')
 const codeSending = ref(false)
 const codeCooldown = ref(0)
 const needProxy = ref(false)
+const testResult = ref('')
+
+async function testApi() {
+  testResult.value = '测试中...'
+  try {
+    const input = credInput.value.trim()
+    if (!input) { testResult.value = '请先输入cred'; return }
+    const cred = input.includes(',') ? input.split(',')[0].trim() : input.trim()
+    const r = await fetch('/api/skland-web/v1/auth/refresh', { headers: { cred } })
+    const d = await r.json()
+    if (d.code === 0) {
+      testResult.value = '✅ API连通! token=' + d.data.token.slice(0, 8) + '...'
+    } else {
+      testResult.value = '❌ ' + (d.message || d)
+    }
+  } catch (e) {
+    testResult.value = '❌ ' + e.message
+  }
+}
 
 async function processGameData(userData) {
   if (!userData.chars || userData.chars.length === 0) {
