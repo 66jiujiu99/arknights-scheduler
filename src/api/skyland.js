@@ -5,7 +5,7 @@
 
 // API 基础地址
 const HYPERGRYPH_API = 'https://as.hypergryph.com'
-const SKYLAND_API = 'https://www.skland.com/api/v1'
+const SKYLAND_API = 'https://zonai.skland.com/api/v1'
 
 // CORS 代理地址（Cloudflare Worker）
 let corsProxy = localStorage.getItem('ak_cors_proxy') || ''

@@ -14,7 +14,7 @@ export async function onRequest(context) {
   if (path.startsWith('auth/')) {
     targetUrl = 'https://as.hypergryph.com/' + path;
   } else if (path.startsWith('skland/')) {
-    targetUrl = 'https://www.skland.com/api/v1/' + path.replace('skland/', '') + queryStr;
+    targetUrl = 'https://zonai.skland.com/api/v1/' + path.replace('skland/', '') + queryStr;
   } else {
     return new Response('Not Found', { status: 404 });
   }
