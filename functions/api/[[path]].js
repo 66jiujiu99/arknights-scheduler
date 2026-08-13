@@ -2,7 +2,7 @@
  * Cloudflare Pages Functions 代理 — 解决 as.hypergryph.com 无 CORS 头的问题
  *
  * 路由：
- *   /api/sw/* -> https://zonai.skland.com/web/*   （旧版 refresh，已下线，保留兼容）
+ *   /api/sw/* -> https://zonai.skland.com/web/*   （GET /web/v1/auth/refresh 换签名 token）
  *   /api/sk/* -> https://zonai.skland.com/api/*
  *   /api/ah/* -> https://as.hypergryph.com/*
  *

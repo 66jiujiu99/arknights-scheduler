@@ -25,7 +25,7 @@
         </ak-alert>
         <div class="ak-form-group">
           <label class="ak-label">凭证（cred,token）</label>
-          <input v-model="credInput" class="ak-input" placeholder='粘贴从森空岛复制的 "cred,token"（两个值都要）' />
+          <input v-model="credInput" class="ak-input" placeholder='粘贴从森空岛复制的 "cred,token"（token 可省略，省略时自动获取）' />
         </div>
         <button class="ak-btn ak-btn-primary" style="width:100%; justify-content:center" @click="loginWithCred" :disabled="loading">
           <span v-if="loading" class="ak-spinner"></span>
@@ -151,11 +151,12 @@ async function testApi() {
   try {
     const input = credInput.value.trim()
     if (!input) { testResult.value = '请先输入cred'; return }
-    const cred = input.includes(',') ? input.split(',')[0].trim() : input.trim()
-    const r = await fetch(resolveApiUrl('https://zonai.skland.com/api/v1/user/check'), { headers: { cred } })
+    const parts = input.includes(',') ? input.split(',') : [input, '']
+    const cred = parts[0].trim()
+    const r = await fetch(resolveApiUrl('https://zonai.skland.com/web/v1/auth/refresh'), { headers: { cred } })
     const d = await r.json()
     if (d.code === 0) {
-      testResult.value = '✅ 凭证有效，API 连通'
+      testResult.value = '✅ 凭证有效，token=' + (d.data?.token || '').slice(0, 8) + '...'
     } else {
       testResult.value = '❌ ' + (d.message || JSON.stringify(d))
     }
@@ -194,13 +195,13 @@ async function loginWithCred() {
   if (!input) { error.value = '请粘贴凭证'; return }
   loading.value = true
   try {
-    // 支持 cred,token 格式（用户从Console复制的）
+    // 支持 cred,token 格式（用户从Console复制的）；token 可省略，省略时自动换取
     const parts = input.includes(',') ? input.split(',') : [input, '']
     const cred = parts[0].trim()
     const token = parts[1] ? parts[1].trim() : ''
     
-    saveCredential(cred)
-    const gameData = await fetchGameData(cred)
+    saveCredential(cred, token)
+    const gameData = await fetchGameData(cred, token)
     const userData = await processGameData(gameData)
     router.push({ name: 'Dashboard' })
   } catch (e) {

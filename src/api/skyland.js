@@ -1,17 +1,21 @@
 /**
  * 鹰角 / 森空岛 API 封装 — 全部内联，零外部依赖
  *
- * 现行接口（2026 实测确认）：
- * - zonai.skland.com 允许浏览器跨域（Access-Control-Allow-Origin: *），cred 直连即可，无需签名
- * - 旧版 /web/v1/auth/refresh + HMAC 签名流程已随接口改版失效，已移除
- * - as.hypergryph.com 不带 CORS 头：密码/验证码登录需走 CF Pages Functions 代理或自定义 CORS 代理
+ * 现行协议（2026-08 从官方 web 端 JS 逆向确认）：
+ * 1. GET  zonai.skland.com/web/v1/auth/refresh（header: cred）→ data.token（签名 token）
+ * 2. 业务请求（zonai.skland.com/api/v1/...）签名：
+ *    sign = md5(hmacSHA256(path + (GET ? query : body) + timestamp +
+ *           JSON.stringify({platform:'3', timestamp, dId, vName}), token))
+ * 3. zonai.skland.com 允许浏览器跨域（ACAO: *），GitHub Pages 直连可用；
+ *    as.hypergryph.com 不带 CORS 头：密码/验证码登录需走 CF Pages Functions 代理或自定义 CORS 代理
  *
- * 登录链路（现行）：
+ * 登录链路：
  *   账号密码  -> POST /user/auth/v1/token_by_phone_password        -> token
  *   手机验证码 -> POST /general/v1/send_phone_code + /user/auth/v2/token_by_phone_code -> token
  *   token     -> POST /user/oauth2/v2/grant  (appCode 固定值)      -> code
  *   code      -> POST /api/v1/user/auth/generate_cred_by_code      -> cred
- *   cred      -> GET  /api/v1/game/player/binding / player/info    -> 游戏数据
+ *   cred      -> GET  /web/v1/auth/refresh                         -> 签名 token
+ *   cred+token-> GET  /api/v1/game/player/binding / player/info    -> 游戏数据
  */
 const SKLAND = 'https://zonai.skland.com'
 const HYPERGRYPH = 'https://as.hypergryph.com'
@@ -25,12 +29,17 @@ function onCfPages() {
 
 /**
  * 按部署环境解析 API 地址：
- * - CF Pages / 本地：走仓库内 functions/api 代理（/api/sk、/api/ah）
- * - GitHub Pages 等其他静态托管：直连（zonai.skland.com 支持 CORS），
+ * - CF Pages / 本地：走仓库内 functions/api 代理（/api/sw、/api/sk、/api/ah）
+ * - GitHub Pages 等其他静态托管：直连 zonai.skland.com（支持 CORS），
  *   若配置了自定义 CORS 代理（ak_cors_proxy）则优先走代理
  */
 export function resolveApiUrl(url) {
   const pre = (localStorage.getItem('ak_cors_proxy') || '').replace(/\/$/, '')
+  if (url.startsWith(SKLAND + '/web')) {
+    const suffix = url.slice(SKLAND.length + 4) // 去掉 '/web/'
+    if (onCfPages()) return '/api/sw' + suffix
+    return pre ? pre + '/api/sw' + suffix : url
+  }
   if (url.startsWith(SKLAND + '/api')) {
     const suffix = url.slice(SKLAND.length + 4) // 去掉 '/api/'
     if (onCfPages()) return '/api/sk' + suffix
@@ -53,9 +62,96 @@ async function req(url, opt = {}) {
   } catch (e) { return { code: -1, message: e.message } }
 }
 
+// ===== 签名 =====
+function getDId() {
+  if (typeof localStorage === 'undefined') return 'web'
+  let id = localStorage.getItem('ak_did')
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : 'web-' + Math.random().toString(16).slice(2) + Date.now().toString(16))
+    localStorage.setItem('ak_did', id)
+  }
+  return id
+}
+
+async function hmacSHA256Hex(key, msg) {
+  const enc = new TextEncoder()
+  const keyBuf = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', keyBuf, enc.encode(msg))
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+// 标准 MD5（RFC 1321），已用测试向量验证（'abc' -> 900150983cd24fb0d6963f7d28e17f72）
+function md5(s) {
+  const HEX = '0123456789abcdef'
+  const T = [0xd76aa478,0xe8c7b756,0x242070db,0xc1bdceee,0xf57c0faf,0x4787c62a,0xa8304613,0xfd469501,0x698098d8,0x8b44f7af,0xffff5bb1,0x895cd7be,0x6b901122,0xfd987193,0xa679438e,0x49b40821,0xf61e2562,0xc040b340,0x265e5a51,0xe9b6c7aa,0xd62f105d,0x02441453,0xd8a1e681,0xe7d3fbc8,0x21e1cde6,0xc33707d6,0xf4d50d87,0x455a14ed,0xa9e3e905,0xfcefa3f8,0x676f02d9,0x8d2a4c8a,0xfffa3942,0x8771f681,0x6d9d6122,0xfde5380c,0xa4beea44,0x4bdecfa9,0xf6bb4b60,0xbebfbc70,0x289b7ec6,0xeaa127fa,0xd4ef3085,0x04881d05,0xd9d4d039,0xe6db99e5,0x1fa27cf8,0xc4ac5665,0xf4292244,0x432aff97,0xab9423a7,0xfc93a039,0x655b59c3,0x8f0ccc92,0xffeff47d,0x85845dd1,0x6fa87e4f,0xfe2ce6e0,0xa3014314,0x4e0811a1,0xf7537e82,0xbd3af235,0x2ad7d2bb,0xeb86d391]
+  const S = [[7,12,17,22],[5,9,14,20],[4,11,16,23],[6,10,15,21]]
+  const enc = new TextEncoder()
+  const bytes = enc.encode(s)
+  const l = bytes.length
+  const words = (((l + 8) >> 6) + 1) * 16
+  const X = new Uint32Array(words)
+  for (let i = 0; i < l; i++) X[i >> 2] |= (bytes[i] & 255) << ((i % 4) * 8)
+  X[l >> 2] |= 0x80 << ((l % 4) * 8)
+  X[words - 2] = (l * 8) >>> 0
+  X[words - 1] = Math.floor(l / 0x100000000)
+  const rotl = (v, n) => (v << n) | (v >>> (32 - n))
+  let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476
+  for (let i = 0; i < words; i += 16) {
+    let A = a0, B = b0, C = c0, D = d0
+    for (let j = 0; j < 64; j++) {
+      let f, g, s
+      if (j < 16)      { f = (B & C) | (~B & D);          g = j;                s = S[0][j % 4] }
+      else if (j < 32) { f = (D & B) | (~D & C);          g = (5 * j + 1) % 16; s = S[1][j % 4] }
+      else if (j < 48) { f = B ^ C ^ D;                   g = (3 * j + 5) % 16; s = S[2][j % 4] }
+      else             { f = C ^ (B | ~D);                g = (7 * j) % 16;    s = S[3][j % 4] }
+      const tmp = D
+      D = C
+      C = B
+      B = (B + rotl((A + f + X[i + g] + T[j]) | 0, s)) | 0
+      A = tmp
+    }
+    a0 = (a0 + A) >>> 0; b0 = (b0 + B) >>> 0; c0 = (c0 + C) >>> 0; d0 = (d0 + D) >>> 0
+  }
+  let r = ''
+  for (const v of [a0, b0, c0, d0]) {
+    for (let i = 0; i < 4; i++) { const byte = (v >>> (i * 8)) & 255; r += HEX[(byte >> 4) & 15] + HEX[byte & 15] }
+  }
+  return r
+}
+
+async function computeSign(path, query, method, body, ts, token) {
+  const headers = { platform: '3', timestamp: ts, dId: getDId(), vName: '1.0.0' }
+  let text = path
+  text += method === 'GET' ? (query || '') : (body || '')
+  text += ts
+  text += JSON.stringify(headers)
+  const hmacHex = await hmacSHA256Hex(token, text)
+  return { sign: md5(hmacHex), ...headers }
+}
+
+async function signedReq(path, query, cred, token) {
+  const ts = Math.floor(Date.now() / 1000).toString()
+  const sig = await computeSign(path, query, 'GET', '', ts, token)
+  return req(SKLAND + path + (query ? '?' + query : ''), {
+    headers: { cred, sign: sig.sign, timestamp: sig.timestamp, dId: sig.dId, platform: sig.platform, vName: sig.vName },
+  })
+}
+
+async function refreshToken(cred) {
+  const r = await req(SKLAND + '/web/v1/auth/refresh', { headers: { cred } })
+  if (r.code !== 0) throw new Error('刷新token:' + (r.message || r.code))
+  return r.data?.token
+}
+
 // ===== 游戏数据 =====
-export async function fetchGameData(cred) {
-  const r2 = await req(SKLAND + '/api/v1/game/player/binding', { headers: { cred } })
+export async function fetchGameData(cred, token = '') {
+  if (!token) {
+    token = await refreshToken(cred)
+    if (!token) throw new Error('刷新token失败: 响应缺少 token')
+    saveCredential(cred, token)
+  }
+
+  const r2 = await signedReq('/api/v1/game/player/binding', '', cred, token)
   if (r2.code !== 0) throw new Error('绑定:' + (r2.message || r2.code))
 
   let akUid = '0', akNick = '', akCh = '官服'
@@ -70,7 +166,7 @@ export async function fetchGameData(cred) {
   }
   if (akUid === '0') throw new Error('未找到明日方舟绑定')
 
-  const r3 = await req(SKLAND + '/api/v1/game/player/info?uid=' + akUid, { headers: { cred } })
+  const r3 = await signedReq('/api/v1/game/player/info', 'uid=' + akUid, cred, token)
   if (r3.code !== 0) throw new Error('数据:' + (r3.message || r3.code))
 
   const d = r3.data
@@ -112,7 +208,7 @@ export async function fetchGameData(cred) {
 }
 
 // ===== 登录 =====
-export function saveCredential(cred) { if (cred) localStorage.setItem('ak_cred', cred) }
+export function saveCredential(cred, token) { if (cred) localStorage.setItem('ak_cred', cred); if (token) localStorage.setItem('ak_token', token) }
 export function getSavedCredential() { return localStorage.getItem('ak_cred') || '' }
 export function setCorsProxy(u) { localStorage.setItem('ak_cors_proxy', u) }
 

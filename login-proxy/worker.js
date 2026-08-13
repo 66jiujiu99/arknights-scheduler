@@ -9,7 +9,7 @@
  *       「CORS 代理配置」输入框（格式 https://你的worker名.workers.dev/）。
  *
  * 路由（与应用内约定一致）：
- *   /api/sw/* -> https://zonai.skland.com/web/*
+ *   /api/sw/* -> https://zonai.skland.com/web/*   （GET /web/v1/auth/refresh 换签名 token）
  *   /api/sk/* -> https://zonai.skland.com/api/*
  *   /api/ah/* -> https://as.hypergryph.com/*
  *
