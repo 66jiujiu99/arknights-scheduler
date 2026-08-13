@@ -85,7 +85,7 @@ tr:hover td{background:rgba(212,168,67,.04)}
       1. 打开 <a href="https://www.skland.com" target="_blank" style="color:#5398ff">森空岛官网</a> 并登录<br>
       2. F12 → Console → 粘贴以下命令回车：<br>
       <code>copy(localStorage.getItem('SK_OAUTH_CRED_KEY'))</code>
-      3. 回到本页粘贴到下方输入框（兼容粘贴 "cred,token" 格式，会自动取 cred 部分）
+      3. 回到本页粘贴到下方输入框（兼容 "cred,token" 格式，token 可省略，省略时自动获取）
     </div>
     <label>Credential</label>
     <input id="credInput" placeholder="粘贴从森空岛复制的 cred"/>
@@ -113,24 +113,105 @@ tr:hover td{background:rgba(212,168,67,.04)}
 </div>
 
 <script>
-// ===== 森空岛 API（现行接口，实测确认）=====
-// - zonai.skland.com 允许浏览器跨域（Access-Control-Allow-Origin: *），cred 直连即可，无需签名
-// - 旧版 /web/v1/auth/refresh + HMAC 签名流程已随接口改版失效，已移除
-// - GitHub Pages / CF Pages / 本地均可直连；CF Pages 上可走 functions 代理 /api/sk
+// ===== 森空岛 API（2026-08 从官方 web 端逆向确认的现行协议）=====
+// 1. GET zonai.skland.com/web/v1/auth/refresh （header: cred）→ data.token（签名 token）
+// 2. 业务请求需签名：sign = md5(hmacSHA256(path + (GET?query:body) + timestamp +
+//    JSON.stringify({platform:'3', timestamp, dId, vName}), token))
+// 3. zonai.skland.com 允许浏览器跨域（ACAO: *），GitHub Pages 直连可用；
+//    CF Pages / 本地开发走仓库内 functions 代理（/api/sw、/api/sk）
 const SKLAND = 'https://zonai.skland.com'
 
 function apiUrl(url) {
   const h = location.hostname
   const onCf = h.includes('pages.dev') || h === 'localhost' || h === '127.0.0.1'
   if (!onCf) return url
-  // CF Pages Functions 代理：/api/sk/<path> → zonai.skland.com/api/<path>
+  if (url.startsWith(SKLAND + '/web')) return '/api/sw' + url.slice(SKLAND.length + 4)
   return '/api/sk' + url.slice(SKLAND.length + 4)
+}
+
+function getDId() {
+  let id = localStorage.getItem('ak_did')
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : 'web-' + Math.random().toString(16).slice(2) + Date.now().toString(16))
+    localStorage.setItem('ak_did', id)
+  }
+  return id
+}
+
+async function hmacSHA256Hex(key, msg) {
+  const enc = new TextEncoder()
+  const keyBuf = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', keyBuf, enc.encode(msg))
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+// 标准 MD5（RFC 1321），已用测试向量验证
+function md5(s) {
+  const HEX = '0123456789abcdef'
+  const T = [0xd76aa478,0xe8c7b756,0x242070db,0xc1bdceee,0xf57c0faf,0x4787c62a,0xa8304613,0xfd469501,0x698098d8,0x8b44f7af,0xffff5bb1,0x895cd7be,0x6b901122,0xfd987193,0xa679438e,0x49b40821,0xf61e2562,0xc040b340,0x265e5a51,0xe9b6c7aa,0xd62f105d,0x02441453,0xd8a1e681,0xe7d3fbc8,0x21e1cde6,0xc33707d6,0xf4d50d87,0x455a14ed,0xa9e3e905,0xfcefa3f8,0x676f02d9,0x8d2a4c8a,0xfffa3942,0x8771f681,0x6d9d6122,0xfde5380c,0xa4beea44,0x4bdecfa9,0xf6bb4b60,0xbebfbc70,0x289b7ec6,0xeaa127fa,0xd4ef3085,0x04881d05,0xd9d4d039,0xe6db99e5,0x1fa27cf8,0xc4ac5665,0xf4292244,0x432aff97,0xab9423a7,0xfc93a039,0x655b59c3,0x8f0ccc92,0xffeff47d,0x85845dd1,0x6fa87e4f,0xfe2ce6e0,0xa3014314,0x4e0811a1,0xf7537e82,0xbd3af235,0x2ad7d2bb,0xeb86d391]
+  const S = [[7,12,17,22],[5,9,14,20],[4,11,16,23],[6,10,15,21]]
+  const enc = new TextEncoder()
+  const bytes = enc.encode(s)
+  const l = bytes.length
+  const words = (((l + 8) >> 6) + 1) * 16
+  const X = new Uint32Array(words)
+  for (let i = 0; i < l; i++) X[i >> 2] |= (bytes[i] & 255) << ((i % 4) * 8)
+  X[l >> 2] |= 0x80 << ((l % 4) * 8)
+  X[words - 2] = (l * 8) >>> 0
+  X[words - 1] = Math.floor(l / 0x100000000)
+  const rotl = (v, n) => (v << n) | (v >>> (32 - n))
+  let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476
+  for (let i = 0; i < words; i += 16) {
+    let A = a0, B = b0, C = c0, D = d0
+    for (let j = 0; j < 64; j++) {
+      let f, g, s
+      if (j < 16)      { f = (B & C) | (~B & D);          g = j;                s = S[0][j % 4] }
+      else if (j < 32) { f = (D & B) | (~D & C);          g = (5 * j + 1) % 16; s = S[1][j % 4] }
+      else if (j < 48) { f = B ^ C ^ D;                   g = (3 * j + 5) % 16; s = S[2][j % 4] }
+      else             { f = C ^ (B | ~D);                g = (7 * j) % 16;    s = S[3][j % 4] }
+      const tmp = D
+      D = C
+      C = B
+      B = (B + rotl((A + f + X[i + g] + T[j]) | 0, s)) | 0
+      A = tmp
+    }
+    a0 = (a0 + A) >>> 0; b0 = (b0 + B) >>> 0; c0 = (c0 + C) >>> 0; d0 = (d0 + D) >>> 0
+  }
+  let r = ''
+  for (const v of [a0, b0, c0, d0]) {
+    for (let i = 0; i < 4; i++) { const byte = (v >>> (i * 8)) & 255; r += HEX[(byte >> 4) & 15] + HEX[byte & 15] }
+  }
+  return r
+}
+
+// 与官方 web 端一致的签名
+async function computeSign(path, query, method, body, ts, token) {
+  const headers = { platform: '3', timestamp: ts, dId: getDId(), vName: '1.0.0' }
+  let text = path
+  text += method === 'GET' ? (query || '') : (body || '')
+  text += ts
+  text += JSON.stringify(headers)
+  const hmacHex = await hmacSHA256Hex(token, text)
+  return { sign: md5(hmacHex), ...headers }
 }
 
 async function api(url, headers) {
   const r = await fetch(url, { headers })
   const t = await r.text()
   try { return JSON.parse(t) } catch { return { code: -1, message: t.slice(0, 200) } }
+}
+
+async function refreshToken(cred) {
+  const r = await api(apiUrl(SKLAND + '/web/v1/auth/refresh'), { cred })
+  if (r.code !== 0) throw new Error('刷新token失败: ' + (r.message || r.code))
+  return r.data?.token
+}
+
+async function signedApi(path, query, cred, token) {
+  const ts = Math.floor(Date.now() / 1000).toString()
+  const sig = await computeSign(path, query, 'GET', '', ts, token)
+  const url = apiUrl(SKLAND + path + (query ? '?' + query : ''))
+  return api(url, { cred, sign: sig.sign, timestamp: sig.timestamp, dId: sig.dId, platform: sig.platform, vName: sig.vName })
 }
 
 function showStatus(type, msg) {
@@ -143,19 +224,23 @@ async function login() {
   const btn = document.getElementById('loginBtn')
   let cred = document.getElementById('credInput').value.trim()
   if (!cred) { showStatus('error', '请输入credential'); return }
-  // 兼容 "cred,token" 格式：取逗号前部分
-  if (cred.includes(',')) cred = cred.split(',')[0].trim()
+  // 兼容 "cred,token" 格式（token 可省略，省略时自动用 cred 换取）
+  let token = ''
+  if (cred.includes(',')) { const parts = cred.split(','); cred = parts[0].trim(); token = (parts[1] || '').trim() }
 
   btn.disabled = true
   btn.innerHTML = '<span class="spinner"></span>获取中...'
 
   try {
-    showStatus('info', '正在校验凭证...')
-    const ck = await api(apiUrl(SKLAND + '/api/v1/user/check'), { cred })
-    if (ck.code !== 0) throw new Error('凭证无效或已过期: ' + (ck.message || ck.code))
+    if (!token) {
+      showStatus('info', '正在获取签名token...')
+      token = await refreshToken(cred)
+      if (!token) throw new Error('刷新token失败: 响应缺少 token')
+    }
+    localStorage.setItem('ak_token', token)
 
     showStatus('info', '正在获取账号绑定...')
-    const r2 = await api(apiUrl(SKLAND + '/api/v1/game/player/binding'), { cred })
+    const r2 = await signedApi('/api/v1/game/player/binding', '', cred, token)
     if (r2.code !== 0) throw new Error('获取绑定失败: ' + (r2.message || r2.code))
 
     let uid = '0', nick = ''
@@ -169,7 +254,7 @@ async function login() {
     if (uid === '0') throw new Error('未找到明日方舟角色绑定')
     showStatus('info', 'UID: ' + uid)
 
-    const r3 = await api(apiUrl(SKLAND + '/api/v1/game/player/info?uid=' + uid), { cred })
+    const r3 = await signedApi('/api/v1/game/player/info', 'uid=' + uid, cred, token)
     if (r3.code !== 0) throw new Error('获取数据失败: ' + (r3.message || r3.code))
 
     const d = r3.data
