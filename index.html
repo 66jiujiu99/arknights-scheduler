@@ -108,6 +108,10 @@ tr:hover td{background:rgba(212,168,67,.04)}
       <div style="font-size:11px;color:#888;margin-bottom:4px">左侧九宫格（点击切换：制造站 → 贸易站 → 发电站）</div>
       <div id="cfgGrid" style="display:grid;grid-template-columns:repeat(3,76px);gap:6px"></div>
     </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;color:#888;margin-bottom:4px">产物 / 策略配置（点击切换，与排班联动）</div>
+      <div id="cfgProduction"></div>
+    </div>
     <div id="cfgLevels" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
     <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <label style="margin:0;font-size:12px;display:flex;align-items:center;gap:4px">宿舍数量
@@ -131,10 +135,6 @@ tr:hover td{background:rgba(212,168,67,.04)}
   
 <div id="scheduleCard" class="card">
   <h2>📋 智能排班</h2>
-  <div class="mf-config" id="mfConfig" style="margin-bottom:10px">
-    <div style="font-size:11px;color:#888;margin-bottom:4px">🏭 制造站产物配置（点击切换）</div>
-    <div id="mfConfigRow" style="display:flex;gap:4px;flex-wrap:wrap"></div>
-  </div>
   <button id="scheduleBtn" class="btn btn-primary" type="button">⚡ 生成排班表</button>
     <div id="scheduleResult"></div>
   </div>
@@ -367,8 +367,8 @@ async function login() {
       charInfoMap: Object.fromEntries(Object.entries(charInfoMap).map(([k, v]) => [k, { name: v.name, rarity: v.rarity }])),
     }))
 
-    // 首次登录：按实际建筑数量初始化基建配置 + 制造站产物配置
-    if (!localStorage.getItem('ak_base_config')) seedConfigFromBuilding(building)
+    // 登录后：直接用本次拉取的游戏数据初始化基建配置（结构部分），产物/策略选择保留
+    seedConfigFromBuilding(building, true)
     if (!localStorage.getItem('ak_mf_config')) refreshMfConfig(Math.max((building.manufactures || []).length, 2))
 
   } catch (e) {
@@ -479,6 +479,13 @@ function seedConfigFromBuilding(b, force) {
     },
     dorms,
   })
+  // 贸易站策略数组长度与贸易站数量同步（默认龙门商法）
+  const trCfg = getTradeStrategies()
+  if (trCfg.length !== grid.filter(t => t === 'TRADING').length) {
+    const t = []
+    for (let i = 0; i < grid.filter(x => x === 'TRADING').length; i++) t.push(trCfg[i] || '龙门商法')
+    localStorage.setItem('ak_trade_config', JSON.stringify(t))
+  }
   persistConfig()
 }
 function syncConfigFromUserData() {
@@ -549,6 +556,39 @@ function renderConfigUI() {
   const issues = validateConfig()
   const el = document.getElementById('cfgIssues')
   if (issues.length) { el.style.display = 'block'; el.textContent = '⚠️ ' + issues.join('；') } else { el.style.display = 'none' }
+  renderProductionUI()
+}
+
+// ===== 产物 / 贸易策略配置（存 localStorage，与排班联动）=====
+function getMfCats() { const saved = JSON.parse(localStorage.getItem('ak_mf_config') || 'null'); return saved || ['赤金', '作战记录', '源石碎片', '通用', '赤金'] }
+function getTradeStrategies() { return JSON.parse(localStorage.getItem('ak_trade_config') || 'null') || [] }
+function setMfCat(i, cat) { const c = getMfCats(); c[i] = cat; localStorage.setItem('ak_mf_config', JSON.stringify(c)); renderProductionUI() }
+function setTradeStrategy(i, s) { const c = getTradeStrategies(); c[i] = s; localStorage.setItem('ak_trade_config', JSON.stringify(c)); renderProductionUI() }
+function renderProductionUI() {
+  const box = document.getElementById('cfgProduction')
+  if (!box) return
+  const g = gridCounts()
+  let h = ''
+  const mfCfg = getMfCats()
+  for (let i = 0; i < g.MANUFACTURE; i++) {
+    h += '<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:5px"><span style="font-size:11px;color:#5ddf5d;width:62px">制造站' + (i + 1) + '</span>'
+    for (const cat of MF_CATS) {
+      const on = (mfCfg[i] || '通用') === cat
+      h += '<span onclick="setMfCat(' + i + ',\'' + cat + '\')" style="cursor:pointer;padding:2px 8px;border-radius:4px;font-size:11px;background:' + (on ? 'rgba(93,221,93,.2)' : 'rgba(15,22,41,.6)') + ';border:1px solid ' + (on ? '#5ddf5d' : 'rgba(42,58,94,.3)') + ';color:' + (on ? '#5ddf5d' : '#888') + '">' + cat + '</span>'
+    }
+    h += '</div>'
+  }
+  const trCfg = getTradeStrategies()
+  for (let i = 0; i < g.TRADING; i++) {
+    h += '<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:5px"><span style="font-size:11px;color:#6bb5ff;width:62px">贸易站' + (i + 1) + '</span>'
+    for (const s of ['龙门商法', '开采协力']) {
+      const on = (trCfg[i] || '龙门商法') === s
+      h += '<span onclick="setTradeStrategy(' + i + ',\'' + s + '\')" style="cursor:pointer;padding:2px 8px;border-radius:4px;font-size:11px;background:' + (on ? 'rgba(107,181,255,.2)' : 'rgba(15,22,41,.6)') + ';border:1px solid ' + (on ? '#6bb5ff' : 'rgba(42,58,94,.3)') + ';color:' + (on ? '#6bb5ff' : '#888') + '">' + s + '</span>'
+    }
+    h += '</div>'
+  }
+  if (g.MANUFACTURE === 0 && g.TRADING === 0) h = '<div style="font-size:11px;color:#666">（左侧未配置制造站/贸易站）</div>'
+  box.innerHTML = h
 }
 
 // ===== 排班算法 v4（自定义基建配置）=====
@@ -579,16 +619,16 @@ function pickFac(type, pool, count, used) { const u = used || new Set(); if (typ
 function pickGeneric(pool, count, used) { const u = used || new Set(), r = []; let e = 0
   for (const o of pool) { if (r.length >= count) break; if (u.has(o.charId)) continue; u.add(o.charId); r.push({ charId: o.charId, name: o.name, displayName: o.displayName, rarity: o.rarity, skill: { type: 'general', value: 0, desc: '通用' }, moodCost: null }) }
   while (r.length < count) r.push({ charId: 'empty_' + r.length, name: '空位', rarity: 1, skill: { type: 'empty', value: 0, desc: '待分配' }, moodCost: null }); return { assigned: r, efficiency: e } }
-function getMfCats() { const saved = JSON.parse(localStorage.getItem('ak_mf_config') || 'null'); return saved || ['赤金', '作战记录', '源石碎片', '通用', '赤金'] }
 
 function buildStations() {
   const stations = []
   stations.push({ id: 'CONTROL', name: '控制中枢', type: 'control', slots: slotsOf('CONTROL'), mood: 0.5 })
   let mi = 0, ti = 0, pi = 0
   const cats = getMfCats()
+  const trStrat = getTradeStrategies()
   for (const t of baseConfig.grid) {
     if (t === 'MANUFACTURE') { const cat = cats[mi] || '通用'; stations.push({ id: 'MF' + (mi + 1), name: '制造站' + (mi + 1) + '(' + cat + ')', type: 'manufacture', slots: slotsOf('MANUFACTURE'), cat, mood: 0.75 }); mi++ }
-    else if (t === 'TRADING') { stations.push({ id: 'TR' + (ti + 1), name: '贸易站' + (ti + 1), type: 'trading', slots: slotsOf('TRADING'), mood: 0.75 }); ti++ }
+    else if (t === 'TRADING') { const strat = trStrat[ti] || '龙门商法'; stations.push({ id: 'TR' + (ti + 1), name: '贸易站' + (ti + 1) + '(' + strat + ')', type: 'trading', slots: slotsOf('TRADING'), mood: 0.75 }); ti++ }
     else { stations.push({ id: 'PW' + (pi + 1), name: '发电站' + (pi + 1), type: 'power', slots: 1, mood: 0.75 }); pi++ }
   }
   stations.push({ id: 'MEETING', name: '会客室', type: 'meeting', slots: slotsOf('MEETING'), mood: 0.5 })
@@ -690,12 +730,9 @@ async function runSchedule() { const btn = document.getElementById('scheduleBtn'
   } catch (e) { alert('排班失败: ' + e.message); console.error(e) } finally { btn.disabled = false; btn.innerHTML = '⚡ 生成排班表' }
 }
 
-// ===== 制造站产物配置 =====
+// ===== 制造站产物配置（数组长度与制造站数量同步）=====
 const MF_CATS = ['赤金', '作战记录', '源石碎片', '技巧概要', '仓库', '通用']
-function initMfConfig() { const r = document.getElementById('mfConfigRow'); if (!r) return; let c = JSON.parse(localStorage.getItem('ak_mf_config') || 'null') || ['赤金', '作战记录', '源石碎片', '通用', '赤金']; renderMfConfig(c) }
-function renderMfConfig(c) { const r = document.getElementById('mfConfigRow'); let h = ''; for (let i = 0; i < c.length; i++) h += '<div class="mf-chip" data-idx="' + i + '" onclick="cycleMfCat(' + i + ')" style="cursor:pointer;padding:3px 8px;border-radius:4px;font-size:11px;background:rgba(15,22,41,.6);border:1px solid rgba(42,58,94,.3);color:#d4a843;letter-spacing:.5px">🏭' + (i + 1) + ' ' + c[i] + '</div>'; r.innerHTML = h }
-function cycleMfCat(i) { let c = JSON.parse(localStorage.getItem('ak_mf_config') || 'null') || ['赤金', '作战记录', '源石碎片', '通用', '赤金']; const ci = MF_CATS.indexOf(c[i]); c[i] = MF_CATS[(ci + 1) % MF_CATS.length]; localStorage.setItem('ak_mf_config', JSON.stringify(c)); renderMfConfig(c) }
-function refreshMfConfig(n) { let c = JSON.parse(localStorage.getItem('ak_mf_config') || 'null'); if (!c || c.length !== n) { c = []; const d = ['赤金', '作战记录', '源石碎片', '通用', '赤金']; for (let i = 0; i < n; i++) c.push(d[i % d.length] || '通用'); localStorage.setItem('ak_mf_config', JSON.stringify(c)) } renderMfConfig(c) }
+function refreshMfConfig(n) { let c = JSON.parse(localStorage.getItem('ak_mf_config') || 'null'); if (!c || c.length !== n) { c = []; const d = ['赤金', '作战记录', '源石碎片', '通用', '赤金']; for (let i = 0; i < n; i++) c.push(d[i % d.length] || '通用'); localStorage.setItem('ak_mf_config', JSON.stringify(c)) } renderProductionUI() }
 
 document.getElementById('loginBtn').addEventListener('click', login)
 document.getElementById('scheduleBtn').addEventListener('click', runSchedule)
@@ -706,7 +743,6 @@ document.getElementById('cfgAssistant').addEventListener('change', e => { baseCo
 document.getElementById('cfgSyncBtn').addEventListener('click', syncConfigFromUserData)
 loadConfig()
 renderConfigUI()
-initMfConfig()
 </script>
 </body>
 </html>
