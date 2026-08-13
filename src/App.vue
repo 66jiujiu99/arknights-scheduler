@@ -33,6 +33,7 @@ const isLoggedIn = computed(() => !!localStorage.getItem('ak_user_data'))
 function logout() {
   localStorage.removeItem('ak_user_data')
   localStorage.removeItem('ak_cred')
+  localStorage.removeItem('ak_token')
   router.push({ name: 'Login' })
 }
 </script>

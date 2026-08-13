@@ -128,7 +128,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { loginByPassword, loginBySmsCode, sendSmsCode, exchangeCredential, fetchGameData, saveCredential, setCorsProxy } from '../api/skyland.js'
+import { loginByPassword, loginBySmsCode, sendSmsCode, exchangeCredential, fetchGameData, saveCredential, setCorsProxy, resolveApiUrl } from '../api/skyland.js'
 import { loginWithAkcookie } from '../api/akcenter.js'
 
 const router = useRouter()
@@ -152,12 +152,12 @@ async function testApi() {
     const input = credInput.value.trim()
     if (!input) { testResult.value = '请先输入cred'; return }
     const cred = input.includes(',') ? input.split(',')[0].trim() : input.trim()
-    const r = await fetch('/api/skland-web/v1/auth/refresh', { headers: { cred } })
+    const r = await fetch(resolveApiUrl('https://zonai.skland.com/api/v1/user/check'), { headers: { cred } })
     const d = await r.json()
     if (d.code === 0) {
-      testResult.value = '✅ API连通! token=' + d.data.token.slice(0, 8) + '...'
+      testResult.value = '✅ 凭证有效，API 连通'
     } else {
-      testResult.value = '❌ ' + (d.message || d)
+      testResult.value = '❌ ' + (d.message || JSON.stringify(d))
     }
   } catch (e) {
     testResult.value = '❌ ' + e.message

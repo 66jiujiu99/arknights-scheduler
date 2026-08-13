@@ -135,9 +135,11 @@ function saveOperators(ops) {
   const data = JSON.parse(localStorage.getItem('ak_user_data') || '{}')
   data.chars = ops
   localStorage.setItem('ak_user_data', JSON.stringify(data))
+  // 手动刷新响应式数据（localStorage 不会触发 computed 更新）
+  operators.value = ops
 }
 
-const operators = computed(() => getOperators())
+const operators = ref(getOperators())
 
 const filteredOps = computed(() => {
   if (!searchQuery.value) return operators.value
@@ -170,6 +172,7 @@ function resetData() {
   if (!confirm('重新同步将清空当前干员数据并从森空岛重新获取，确定？')) return
   localStorage.removeItem('ak_user_data')
   localStorage.removeItem('ak_cred')
+  localStorage.removeItem('ak_token')
   window.location.reload()
 }
 </script>
