@@ -119,6 +119,7 @@ tr:hover td{background:rgba(212,168,67,.04)}
     </div>
     <div id="cfgSummary" style="font-size:12px;color:#d4a843;background:rgba(212,168,67,.08);border:1px solid rgba(212,168,67,.25);border-radius:6px;padding:8px 10px;margin-bottom:8px"></div>
     <div id="cfgIssues" style="font-size:12px;color:#ff6b6b;margin-bottom:8px;display:none"></div>
+    <button id="cfgSyncBtn" class="btn btn-secondary" type="button" style="padding:6px 12px;font-size:12px;width:auto;background:rgba(42,58,94,.4);border:1px solid rgba(42,58,94,.6);color:#6bb5ff;border-radius:6px;cursor:pointer">🔄 从游戏数据同步（自动填等级/数量）</button>
   </div>
   
   <div id="resultCard" class="card result">
@@ -301,8 +302,9 @@ async function login() {
       if (nameCount[n] > 1) return n + '(' + (PROF_CN[info.profession] || info.profession || '') + ')'
       return n
     }
-    // charInfoMap 的 rarity 是 0 起始（5星=4），转成实际星级需 +1
-    const starOf = c => c.rarity || ((charInfoMap[c.id || c.charId]?.rarity ?? -1) + 1) || 1
+    // charInfoMap 的 rarity 是 0 起始（5星=4），转成实际星级需 +1；
+    // 注意 chars 数组里的 rarity 字段恒为 0（无用），一律以 charInfoMap 为准
+    const starOf = c => ((charInfoMap[c.id || c.charId]?.rarity ?? -1) + 1) || 1
 
     showStatus('success', '✅ 获取成功！' + chars.length + '名干员')
 
@@ -351,11 +353,13 @@ async function login() {
         }
       }),
       building: {
+        control: building.control || null,
         manufactures: building.manufactures || [],
         tradings: building.tradings || [],
         dormitories: building.dormitories || [],
         powers: building.powers || [],
         meeting: building.meeting || null,
+        hire: building.hire || null,
         training: building.training || null,
         tiredChars: building.tiredChars || [],
         labor: building.labor || {},
@@ -388,8 +392,8 @@ const ROOM_TYPES = {
 const FIXED_ROOMS = {
   CONTROL:   { name: '控制中枢', maxLevel: 5, slotsByLevel: { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5 }, mood: 0.5 },
   DORMITORY: { name: '宿舍',     maxLevel: 5, slots: 5, mood: 0 },
-  MEETING:   { name: '会客室',   maxLevel: 3, slots: 1, mood: 0.5 },
-  HIRE:      { name: '办公室',   maxLevel: 3, slots: 2, mood: 0.5 },
+  MEETING:   { name: '会客室',   maxLevel: 3, slotsByLevel: { 1: 1, 2: 2, 3: 2 }, mood: 0.5 }, // Lv.1 1人，Lv.2+ 2人
+  HIRE:      { name: '办公室',   maxLevel: 3, slotsByLevel: { 1: 1, 2: 2, 3: 2 }, mood: 0.5 }, // 同上
   TRAINING:  { name: '训练室',   maxLevel: 3, slots: 2, mood: 0.3 }, // 1 主位 + 1 协助位
   WORKSHOP:  { name: '加工站',   maxLevel: 3, slots: 1, mood: 0 },
 }
@@ -441,8 +445,10 @@ function controlUpgradeHint() {
   const have = facLevels.filter(lv => lv >= need[0]).length
   return have >= need[1] ? '' : ('中枢升级提示：Lv.' + baseConfig.controlLevel + ' 需 ' + need[1] + ' 个 Lv.' + need[0] + ' 设施（当前 ' + have + ' 个）')
 }
-function seedConfigFromBuilding(b) {
-  if (localStorage.getItem('ak_base_config')) return
+// 从游戏数据自动填充基建配置（中枢等级、各设施等级、九宫格、宿舍数）
+function seedConfigFromBuilding(b, force) {
+  if (!force && localStorage.getItem('ak_base_config')) return
+  const lvOf = (arr) => { const l = (arr || []).map(x => (x && x.level) || 1); return l.length ? Math.max.apply(null, l) : null }
   const mf = Math.min(5, (b.manufactures || []).length), tr = Math.min(5, (b.tradings || []).length), pw = Math.min(3, (b.powers || []).length)
   const grid = []
   for (let i = 0; i < mf; i++) grid.push('MANUFACTURE')
@@ -458,8 +464,30 @@ function seedConfigFromBuilding(b) {
   }
   grid.length = 9
   const dorms = Math.max(1, Math.min(4, (b.dormitories || []).length || 4))
-  baseConfig = Object.assign(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), { grid, dorms })
+  baseConfig = Object.assign(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), {
+    controlLevel: Math.max(1, Math.min(5, (b.control && b.control.level) || 5)),
+    grid,
+    levels: {
+      MANUFACTURE: lvOf(b.manufactures) || 3,
+      TRADING: lvOf(b.tradings) || 3,
+      POWER: lvOf(b.powers) || 1,
+      DORMITORY: lvOf(b.dormitories) || 5,
+      MEETING: (b.meeting && b.meeting.level) || 1,
+      HIRE: (b.hire && b.hire.level) || 1,
+      TRAINING: (b.training && b.training.level) || 1,
+      WORKSHOP: 1,
+    },
+    dorms,
+  })
   persistConfig()
+}
+function syncConfigFromUserData() {
+  try {
+    const ud = JSON.parse(localStorage.getItem('ak_user_data') || '{}')
+    if (!ud.building || !Object.keys(ud.building).length) { alert('请先登录获取干员数据'); return }
+    seedConfigFromBuilding(ud.building, true)
+    alert('已按游戏数据同步基建配置')
+  } catch (e) { alert('同步失败: ' + e.message) }
 }
 
 function renderConfigUI() {
@@ -675,6 +703,7 @@ document.getElementById('credInput').addEventListener('keydown', e => { if (e.ke
 document.getElementById('cfgControlLevel').addEventListener('change', e => { baseConfig.controlLevel = parseInt(e.target.value); persistConfig() })
 document.getElementById('cfgDorms').addEventListener('change', e => { baseConfig.dorms = parseInt(e.target.value); persistConfig() })
 document.getElementById('cfgAssistant').addEventListener('change', e => { baseConfig.useAssistant = e.target.checked; persistConfig() })
+document.getElementById('cfgSyncBtn').addEventListener('click', syncConfigFromUserData)
 loadConfig()
 renderConfigUI()
 initMfConfig()

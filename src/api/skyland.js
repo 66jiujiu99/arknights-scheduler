@@ -182,8 +182,9 @@ export async function fetchGameData(cred, token = '') {
     if (nameCount[n] > 1) return n + '(' + (PROF_CN[info.profession] || info.profession || '') + ')'
     return n
   }
-  // charInfoMap 的 rarity 是 0 起始（5星=4），转成实际星级需 +1
-  const starOf = c => c.rarity || ((charInfoMap[c.charId]?.rarity ?? -1) + 1) || 1
+  // charInfoMap 的 rarity 是 0 起始（5星=4），转成实际星级需 +1；
+  // 注意 chars 数组里的 rarity 字段恒为 0（无用），一律以 charInfoMap 为准
+  const starOf = c => ((charInfoMap[c.charId]?.rarity ?? -1) + 1) || 1
 
   const chars = (d.chars || []).map(c => {
     const info = charInfoMap[c.charId] || {}
