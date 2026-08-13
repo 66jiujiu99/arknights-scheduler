@@ -110,7 +110,7 @@
                 </div>
                 <div style="flex:1; min-width:0">
                   <div style="font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
-                    {{ op.name || '空位' }}
+                    {{ op.displayName || op.name || '空位' }}
                     <span v-if="op.currentSkill?.type === 'general'" style="font-size:10px; color:var(--ak-text-dim); margin-left:4px">(通用)</span>
                     <span v-if="op.currentSkill?.type === 'rest'" style="font-size:10px; color:#52c41a; margin-left:4px">(休息)</span>
                     <span v-if="isInCombo(op, facility)" style="font-size:10px; color:#f5c518; margin-left:4px">★组合</span>

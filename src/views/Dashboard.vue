@@ -43,7 +43,7 @@
         <div style="display:flex; flex-wrap:wrap; gap:6px">
           <span v-for="c in topOperators" :key="c.id" class="ak-tag" 
                 :class="c.rarity >= 5 ? 'ak-tag-yellow' : c.rarity >= 4 ? 'ak-tag-blue' : 'ak-tag-green'">
-            {{ c.name }}
+            {{ c.displayName || c.name }}
           </span>
         </div>
         <div style="margin-top:12px; font-size:13px; color:var(--ak-text-dim)">

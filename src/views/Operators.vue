@@ -73,7 +73,7 @@
                 <div class="ak-operator-avatar" :style="{ background: op.rarity >= 5 ? 'rgba(245,197,24,0.2)' : op.rarity >= 4 ? 'rgba(83,152,255,0.2)' : 'var(--ak-bg-panel)' }">
                   {{ op.name?.charAt(0) || '?' }}
                 </div>
-                {{ op.name || '未知' }}
+                {{ op.displayName || op.name || '未知' }}
               </div>
             </td>
             <td>

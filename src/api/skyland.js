@@ -171,13 +171,28 @@ export async function fetchGameData(cred, token = '') {
 
   const d = r3.data
   const charInfoMap = d.charInfoMap || {}
+
+  // 干员职业（区分多职业重名干员，如三个阿米娅：术师/近卫/医疗）
+  const PROF_CN = { CASTER: '术师', WARRIOR: '近卫', MEDIC: '医疗', PIONEER: '先锋', SNIPER: '狙击', SUPPORT: '辅助', SPECIAL: '特种', TANK: '重装' }
+  const nameCount = {}
+  for (const c of (d.chars || [])) { const n = charInfoMap[c.charId]?.name || c.charId; nameCount[n] = (nameCount[n] || 0) + 1 }
+  const displayNameOf = c => {
+    const info = charInfoMap[c.charId] || {}
+    const n = info.name || c.charId
+    if (nameCount[n] > 1) return n + '(' + (PROF_CN[info.profession] || info.profession || '') + ')'
+    return n
+  }
+  // charInfoMap 的 rarity 是 0 起始（5星=4），转成实际星级需 +1
+  const starOf = c => c.rarity || ((charInfoMap[c.charId]?.rarity ?? -1) + 1) || 1
+
   const chars = (d.chars || []).map(c => {
     const info = charInfoMap[c.charId] || {}
     return {
       id: c.charId,
       charId: c.charId,
       name: info.name || c.charId,
-      rarity: info.rarity || c.rarity || 1,
+      displayName: displayNameOf(c),
+      rarity: starOf(c),
       level: c.level || 1,
       elite: c.evolvePhase || 0,
       potential: Math.ceil((c.potentialRank || 0) + 1),
