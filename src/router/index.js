@@ -1,48 +1,25 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { store } from '../stores/session'
 
 const routes = [
-  {
-    path: '/',
-    name: 'Home',
-    component: () => import('../views/Home.vue'),
-  },
-  {
-    path: '/login',
-    name: 'Login',
-    component: () => import('../views/Login.vue'),
-  },
-  {
-    path: '/dashboard',
-    name: 'Dashboard',
-    component: () => import('../views/Dashboard.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
-    path: '/schedule',
-    name: 'Schedule',
-    component: () => import('../views/Schedule.vue'),
-    meta: { requiresAuth: true },
-  },
-  {
-    path: '/operators',
-    name: 'Operators',
-    component: () => import('../views/Operators.vue'),
-    meta: { requiresAuth: true },
-  },
+  { path: '/', redirect: () => (store.session ? '/setup' : '/login') },
+  { path: '/login', name: 'Login', component: () => import('../views/LoginView.vue') },
+  { path: '/setup', name: 'Setup', component: () => import('../views/SetupView.vue'), meta: { auth: true } },
+  { path: '/plan', name: 'Plan', component: () => import('../views/PlanView.vue'), meta: { auth: true } },
+  { path: '/about', name: 'About', component: () => import('../views/AboutView.vue') },
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes,
+  scrollBehavior: () => ({ top: 0 }),
 })
 
-router.beforeEach((to, from, next) => {
-  const userData = localStorage.getItem('ak_user_data')
-  if (to.meta.requiresAuth && !userData) {
-    next({ name: 'Login' })
-  } else {
-    next()
-  }
+router.beforeEach((to) => {
+  if (to.meta.auth && !store.session) return { name: 'Login' }
+  if (to.name === 'Login' && store.session) return { name: 'Setup' }
+  return true
 })
 
 export default router

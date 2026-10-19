@@ -1,0 +1,96 @@
+{
+  "note": "手动维护的基建组合。members 用中文名，构建脚本会解析成 charId。effect 为估算加成，可在 UI/文件里调整。",
+  "combos": [
+    {
+      "id": "trade_wulian_baihui",
+      "name": "巫恋 + 柏喙（订单质量）",
+      "facility": "TRADING",
+      "members": [
+        "巫恋",
+        "柏喙"
+      ],
+      "effect": {
+        "tradeEfficiency": 0.12,
+        "tradeQuality": 0.5
+      },
+      "verified": true,
+      "note": "巫恋「低语」+ 柏喙「裁缝」；α 级 3h、β 级 5h 暖机，实际收益按订单分布估算。"
+    },
+    {
+      "id": "trade_texas_lappland",
+      "name": "德克萨斯 + 拉普兰德（恩怨）",
+      "facility": "TRADING",
+      "members": [
+        "德克萨斯",
+        "拉普兰德"
+      ],
+      "effect": {
+        "tradeEfficiency": 0.65
+      },
+      "verified": true,
+      "note": "德克萨斯「恩怨」：同贸易站时订单效率 +65%，自身心情 +0.3/h；需要同站。"
+    },
+    {
+      "id": "control_rainbow",
+      "name": "彩虹小队（中枢心情）",
+      "facility": "CONTROL",
+      "members": [
+        "灰烬",
+        "战车",
+        "闪击",
+        "霜华"
+      ],
+      "effect": {
+        "globalMoodRecovery": 0.2
+      },
+      "verified": true,
+      "note": "彩虹小队中枢技能互相提供心情恢复；4 人全上时约 +0.2/h 的全员恢复（估算）。"
+    },
+    {
+      "id": "control_mujica",
+      "name": "Mujica 五人（热情值）",
+      "facility": "CONTROL",
+      "members": [
+        "丰川祥子",
+        "八幡海铃",
+        "三角初华",
+        "祐天寺若麦",
+        "若叶睦"
+      ],
+      "effect": {
+        "controlEfficiency": 0.08
+      },
+      "verified": true,
+      "note": "热情值体系：五人同中枢时按技能叠加；具体数值随热情值变化，这里给保守估算。"
+    },
+    {
+      "id": "control_ling_dusk",
+      "name": "令 + 夕 + 重岳（中枢体系）",
+      "facility": "CONTROL",
+      "members": [
+        "令",
+        "夕",
+        "重岳"
+      ],
+      "effect": {
+        "controlEfficiency": 0.04
+      },
+      "verified": false,
+      "note": "中间产物/外势体系，需要按当前技能描述确认；默认不启用，可在组合配置里打开。"
+    },
+    {
+      "id": "dorm_fiammetta",
+      "name": "菲亚梅塔 + 巫恋（007 支援）",
+      "facility": "DORMITORY",
+      "members": [
+        "菲亚梅塔",
+        "巫恋"
+      ],
+      "effect": {
+        "moodRecovery": 0.2
+      },
+      "verified": false,
+      "note": "菲亚梅塔宿舍「患难之交」与巫恋组配合；具体排班依赖宿舍位，默认不启用。"
+    }
+  ]
+}

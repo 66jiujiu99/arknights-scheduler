@@ -1,13 +1,15 @@
 {
   "name": "arknights-scheduler",
   "private": true,
-  "version": "0.0.0",
+  "version": "5.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:scheduler": "node test-scheduler.mjs"
+    "build:data": "node scripts/build-base-data.mjs",
+    "test:optimizer": "node tests/optimizer.test.mjs",
+    "check:efficiency": "node scripts/check-efficiency.mjs"
   },
   "dependencies": {
     "pinia": "^2.3.1",
@@ -17,5 +19,6 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.7",
     "vite": "^8.1.1"
-  }
+  },
+  "description": "Arknights base scheduler v5 — static, Skland login, 3 candidate plans"
 }

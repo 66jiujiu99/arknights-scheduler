@@ -1,95 +1,111 @@
-# 罗德岛智能排班系统
+# 罗德岛排班 v5
 
-> 明日方舟基建自动排班工具 | Arknights Base Scheduler
+> 明日方舟基建排班工具 · 纯静态 · GitHub Pages
+>
+> 当前数据版本：2026-10（昨日海）
 
-基于森空岛 API 的纯前端排班系统，自动解析干员数据并生成基建轮换方案。
+## 这是什么
 
-## 功能
+用森空岛凭证读取你的干员与基建数据，生成 **3 个候选排班方案**：
 
-- **森空岛 Credential 一键登录**：粘贴凭证即可同步干员数据，浏览器直连 API，无跨域问题
-- **自定义基建配置**：九宫格（制造站≤5 / 贸易站≤5 / 发电站≤3）、控制中枢等级（1-5 人）、各设施等级（可放人数随等级变化）、宿舍数量、基建副手位；带规则校验和「按游戏数据同步」
-- **v4 全设施排班**：按你的基建配置生成 A/B 两班方案，覆盖控制中枢/制造站/贸易站/发电站/会客室/办公室/训练室/加工站/宿舍/副手；制造站按产物、贸易站按策略匹配，贸易站搭档联动，控制中枢加成计入效率
-- **心情与效率统计**：每班效率、心情消耗/小时、中枢加成
-- **方案管理**：保存/加载/删除方案，复制排班文本，导出 JSON
-- **Vue 3 单页应用**：Vue 3 + Vite，Hash 路由；旧版单文件应用保留在 `legacy.html`
-- **数据本地存储**：所有数据保存在浏览器 localStorage，不上传任何服务器
+- **一键换班**：少操作。按游戏内「队列轮换」的预设队列设计，每天点 1~3 次。
+- **效率最大**：按时刻表手动换，允许不同设施不同周期，追求更高的日产出。
 
-## 登录方式说明
+每个候选按你设置的 **龙门币 / 经验 / 合成玉 / 信赖** 权重排序，并给出最低心情、换班时间表、生效组合、练度建议与布局建议。
 
-| 方式 | 说明 |
-|------|------|
-| **Credential（推荐）** | 从森空岛官网浏览器开发者工具中复制 `SK_OAUTH_CRED_KEY` 的值粘贴即可。森空岛 API（zonai.skland.com）允许浏览器跨域，GitHub Pages 部署也能直接使用 |
-| **账号密码 / 手机验证码** | 鹰角通行证接口（as.hypergryph.com）**不带 CORS 头**，需要部署 `login-proxy/worker.js`（Cloudflare Worker）或使用浏览器跨域插件 |
+## 纯静态
 
-### 账号密码 / 验证码登录代理配置
+- Vue 3 + Vite，构建产物是纯 HTML/JS/CSS，直接部署 GitHub Pages。
+- 没有后端：凭证只存浏览器 localStorage；请求由浏览器直连森空岛。
+- 浏览器侧包含设备指纹生成与请求签名（vendor 的 skland-kit 浏览器 bundle）。
+- 游戏数据在构建时生成静态 JSON，页面运行时只读。
 
-1. 打开 [Cloudflare Dashboard](https://dash.cloudflare.com/) → Workers & Pages
-2. 创建一个新的 Worker，代码使用仓库中 [`login-proxy/worker.js`](login-proxy/worker.js) 的内容
-3. 部署后把 Worker 地址填入应用的「CORS 代理配置」（Vue 版登录页内）
+## 登录
 
-> 代理只允许来自 `*.pages.dev` / `*.github.io` / `localhost` 的调用，避免被第三方滥用。
+1. 浏览器打开 <https://www.skland.com/> 并登录。
+2. F12 → Console，执行：
 
-## 快速开始
+   ~~~js
+   localStorage.getItem('SK_OAUTH_CRED_KEY') + ',' + localStorage.getItem('SK_TOKEN_CACHE_KEY')
+   ~~~
 
-```bash
-# 安装依赖
+3. 把输出的整段字符串粘贴到登录框。
+
+凭证等价于登录态，请勿发给他人；换设备/清缓存后需重新粘贴。
+
+> 账号密码/验证码登录需要跨域代理，与「纯静态」目标冲突，v5 不再提供。
+
+## 开发
+
+~~~bash
 npm install
+npm run dev          # 本地开发
+npm run build        # 构建到 dist
+npm run preview      # 预览构建
+npm run build:data   # 重新生成 public/data/v5（需要网络）
+npm run test:optimizer
+~~~
 
-# 开发模式（本地起静态服务，应用为单文件 index.html）
-npm run dev
+游戏数据生成脚本从 [Kengxxiao/ArknightsGameData](https://github.com/Kengxxiao/ArknightsGameData) 拉取
+<code>building_data.json</code> 与 <code>character_table.json</code>，生成：
 
-# 构建
-npm run build
+- <code>public/data/v5/operators.json</code>：432 名干员的全部后勤技能（含精英阶段/等级条件）
+- <code>public/data/v5/facilities.json</code>：房间、电力、配方、订单、常量、布局模板
+- <code>public/data/v5/combos.json</code>：由 <code>scripts/combos.source.json</code> 的中文名解析成 charId
 
-# 预览构建结果
-npm run preview
+## 组合配置
 
-# 算法自测（无需浏览器）
-npm run test:scheduler
-```
+组合是手动维护的。编辑 <code>scripts/combos.source.json</code>：
+
+~~~json
+{
+  "id": "trade_texas_lappland",
+  "name": "德克萨斯 + 拉普兰德（恩怨）",
+  "facility": "TRADING",
+  "members": ["德克萨斯", "拉普兰德"],
+  "effect": { "tradeEfficiency": 0.65 },
+  "verified": true
+}
+~~~
+
+然后运行 <code>npm run build:data</code>。<code>verified: false</code> 的组合会保留在数据里，但默认不参与算法。
+
+## 测试
+
+~~~bash
+npm run test:optimizer   # 15 个效率/结构用例，无需凭证
+npm run check:efficiency # 真实账号端到端效率检查，需要 AK_CRED
+~~~
+
+测试报告见 [docs/v5-test-report.md](docs/v5-test-report.md)。
+
+## 已知限制
+
+- 森空岛 API 不返回加工站、回收站、活动室、副手，需在「基建配置」首次手动补全。
+- 收益为估算值：订单质量、中间产物链、部分条件技能未完全精确建模。
+- 工具只给方案，不操作游戏；一键换班仍需在游戏内点队列轮换。
+- 活动室按单人间使用计算活动信赖。
+
+## 目录
+
+~~~text
+src/
+  api/skland.js       登录、设备指纹、数据映射
+  core/data.js        静态数据加载与技能筛选
+  core/base.js        基建配置、电力校验
+  core/optimizer.js   心情模拟、产品组合、3 候选、组合/练度建议
+  views/              Login / Setup / Plan / About
+  vendor/             skland-kit 浏览器 bundle（MIT）
+public/data/v5/       运行时静态数据
+scripts/              数据生成 + 组合源文件
+tests/                效率与结构测试
+~~~
 
 ## 部署
 
-推送到 GitHub 后，Actions 会自动部署到 GitHub Pages：
+推送到 <code>main</code> 后，GitHub Actions 自动部署到 Pages：
 
-```bash
-git push origin main
-```
-
-访问：`https://66jiujiu99.github.io/arknights-scheduler/`
-
-GitHub Pages 上 **Credential 登录可直接使用**（森空岛 API 支持 CORS）；账号密码/验证码登录需自行配置 CORS 代理。
-
-也可以部署到 Cloudflare Pages（构建命令 `npm run build`，环境变量 `CF_PAGES=1`），此时仓库内的 [`functions/api/[[path]].js`](functions/api/[[path]].js) 会自动成为 API 代理，密码/验证码登录无需额外配置。
-
-## 排班算法（v4）
-
-1. 按基建配置生成站点：控制中枢 + 九宫格（制造/贸易/发电）+ 会客室/办公室/训练室/加工站 + 宿舍 + 副手
-2. 把森空岛干员数据与 `baseSkills.json` 合成基建技能（制造、贸易、发电、会客、训练、控制中枢、宿舍）
-3. 制造站按产物分类、贸易站按策略匹配；贸易站搭档联动
-4. 控制中枢的全设施加成计入制造站/贸易站效率
-5. 生成 A/B 两班轮换，统计效率与心情消耗（站内人数 × 设施基础消耗 + 干员技能修正）
-
-## 代码结构
-
-- `index.html` — Vue 入口页
-- `src/` — Vue 3 应用（主入口）
-  - `views/` — Login / Dashboard / Schedule / Operators
-  - `components/BaseConfig.vue` — 自定义基建配置
-  - `utils/schedulerV4.js` — v4 排班算法（纯函数）
-  - `composables/useBaseConfig.js` — 基建配置状态与 localStorage
-- `public/data/` — 干员基建技能数据（baseSkills.json）、控制中枢技能数据（ctrl_skills.json）
-- `public/legacy.html` — 旧版单文件应用（保留可用，入口在首页底部）
-- `functions/api/[[path]].js` — Cloudflare Pages Functions API 代理
-- `login-proxy/worker.js` — 独立 Cloudflare Worker 版 CORS 代理
-
-## 开发计划
-
-- [x] 自定义基建设施配置
-- [x] Vue 3 重构版接入入口
-- [ ] 完整干员基建技能数据（从 PRTS 整理）
-- [ ] 心情消耗预测和换班提醒（当前已统计心情/小时）
-- [ ] 导出排班表图片（当前支持复制文本/导出 JSON）
+<https://66jiujiu99.github.io/arknights-scheduler/>
 
 ## 许可
 
