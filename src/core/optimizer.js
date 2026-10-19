@@ -95,9 +95,9 @@ function matchingSkill(person, room, product) {
       else if (product === '作战记录' && skill.subcategory === '作战记录') score = skillValue(skill, room)
       else if (product === '源石碎片' && skill.subcategory === '源石') score = skillValue(skill, room)
       else if (skill.subcategory === '通用') score = skillValue(skill, room) * 0.3
-      else if (skill.subcategory === '仓库') score = 0
       else score = 0
     }
+    if (score <= 0) continue
     if (score > bestScore) { bestScore = score; best = skill }
   }
   return best
@@ -110,7 +110,18 @@ function controlScore(person) {
     if (skill.subcategory === '制造加成' || skill.subcategory === '贸易加成') score += skillValue(skill, 'CONTROL')
     else if (skill.subcategory === '心情') score += skillValue(skill, 'CONTROL') * 0.5
     else score += skillValue(skill, 'CONTROL') * 0.2
-    score -= Math.max(0, Number(skill.mood || 0)) * 6
+    const effects = skill.effects || []
+    const hasRecovery = effects.some((e) => e.type === 'moodRecovery')
+    const hasCost = effects.some((e) => e.type === 'moodCost')
+    if (hasRecovery) {
+      const recovery = effects.filter((e) => e.type === 'moodRecovery').reduce((sum, e) => sum + Number(e.value || 0), 0)
+      score += recovery * 20
+    }
+    if (hasCost) {
+      const cost = effects.filter((e) => e.type === 'moodCost').reduce((sum, e) => sum + Number(e.value || 0), 0)
+      score -= cost * 6
+    }
+    if (!hasRecovery && !hasCost && skill.subcategory === '心情') score -= Math.max(0, Number(skill.mood || 0)) * 6
   }
   return score
 }
@@ -187,15 +198,37 @@ function controlBonuses(controlOps) {
   let mfg = 0
   let trade = 0
   let mood = 0
+  let moodRecovery = 0
+  let moodCost = 0
+  for (const op of controlOps || []) {
+    for (const skill of op.skills || []) {
+      const effects = skill.effects || []
+      for (const effect of effects) {
+        if (effect.target === 'otherFacilities' || effect.target === 'dormitory') continue
+        if (effect.type === 'moodRecovery') {
+          const count = effect.per === 'factionMember'
+            ? (controlOps || []).filter((x) => x.char?.group === effect.factionId).length
+            : 1
+          moodRecovery += Number(effect.value || 0) * count
+        }
+        if (effect.type === 'moodCost') moodCost += Number(effect.value || 0)
+      }
+      if (!effects.length && skill.subcategory === '心情') {
+        if (/恢复/.test(skill.text || '')) moodRecovery += Number(skill.mood || 0)
+        else if (/消耗/.test(skill.text || '')) moodCost += Number(skill.mood || 0)
+      }
+    }
+  }
   for (const item of groups.values()) {
     if (item.subcategory === '制造加成') mfg += item.value
     if (item.subcategory === '贸易加成') trade += item.value
-    if (item.subcategory === '心情') mood += item.value
   }
   return {
     manufacture: Math.min(25, mfg),
     trading: Math.min(25, trade),
     mood,
+    moodRecovery,
+    moodCost,
   }
 }
 
@@ -248,7 +281,8 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
     const slots = slotsFor(data, 'MANUFACTURE', room.level)
     const scorer = (p) => {
       const skill = matchingSkill(p, 'MANUFACTURE', product)
-      return Number(skill?.value || 0) - Math.max(0, Number(skill?.mood || 0)) * 4
+      if (!skill) return 0
+      return skillValue(skill, 'MANUFACTURE') - Math.max(0, Number(skill.mood || 0)) * 4
     }
     const preferred = []
     for (const combo of data.combos || []) {
@@ -479,7 +513,7 @@ function scoreQueues(queues, base, data, opts, mix) {
     q.stats = {}
     // Control center: its own mood reduction + global buffs.
     q.stats.CONTROL = statFor('CONTROL', a.CONTROL || [], {
-      baseRate: 1 - 0.05 * controlOpsCount,
+      baseRate: 1 - 0.05 * controlOpsCount - Number(control.moodRecovery || 0) + Number(control.moodCost || 0),
       efficiency: null,
     })
     q.stats.CONTROL.manufacture = control.manufacture

@@ -526,3 +526,34 @@ test('recommendations prefer low promotion cost for the same skill gain', () => 
   assert.ok(cheap.efficiency > expensive.efficiency)
   assert.ok(cheap.cost < expensive.cost)
 })
+
+
+test('manufacture slots never use a skill for another product', () => {
+  const characters = {
+    gold_op: { id: 'gold_op', name: '赤金干员', rarity: 5, profession: '近卫', skills: [mkSkill('MANUFACTURE', '贵金属', 30)] },
+    record_op: { id: 'record_op', name: '经验干员', rarity: 5, profession: '近卫', skills: [mkSkill('MANUFACTURE', '作战记录', 30)] },
+    source_op: { id: 'source_op', name: '源石干员', rarity: 5, profession: '近卫', skills: [mkSkill('MANUFACTURE', '源石', 30)] },
+  }
+  const player = mkPlayer([{ id: 'gold_op' }, { id: 'record_op' }, { id: 'source_op' }, ...pool(20)])
+  const result = generate(player, mkData(characters), {
+    products: ['赤金', '赤金', '赤金'], strategies: ['龙门商法', '龙门商法', '龙门商法'],
+    weights: { lmd: 100, exp: 0, orundum: 0, trust: 0 },
+  })
+  const room = result.candidates[0].queues[0].assigned.MANUFACTURE[0]
+  for (const op of room.ops) {
+    assert.ok(!op.skill || op.skill.subcategory === '贵金属' || op.skill.subcategory === '通用')
+  }
+  assert.ok(!room.ops.some((op) => op.skill?.subcategory === '作战记录' || op.skill?.subcategory === '源石'))
+})
+
+
+test('operators data exposes structured effects and Ch\'en faction recovery', () => {
+  const operators = JSON.parse(readFileSync(new URL('../public/data/v5/operators.json', import.meta.url), 'utf8'))
+  const chen = Object.values(operators.characters).find((c) => c.name === '陈')
+  const skill = chen.skills.find((s) => s.name === '德才兼备')
+  assert.equal(skill.effects[0].type, 'moodRecovery')
+  assert.equal(skill.effects[0].target, 'control')
+  assert.equal(skill.effects[0].per, 'factionMember')
+  assert.equal(skill.effects[0].factionId, 'lgd')
+  assert.ok(Object.values(operators.characters).every((c) => c.skills.every((s) => Array.isArray(s.effects))))
+})

@@ -74,7 +74,7 @@ npm run test:optimizer
 ## 测试
 
 ~~~bash
-npm run test:optimizer   # 24 个效率/结构用例，无需凭证
+npm run test:optimizer   # 26 个效率/结构用例，无需凭证
 npm run test:options     # 2 个权重状态回归用例
 npm run check:efficiency # 真实账号端到端效率检查，需要 AK_CRED
 ~~~
@@ -134,3 +134,8 @@ MIT
 - [LBEILC/RhineLabUI](https://github.com/LBEILC/RhineLabUI)（MIT）：暖灰纸面、墨黑正文、暖杏金选中信号、档案式排版。
 - [Rad-Weed/rhine-lab-motion](https://github.com/Rad-Weed/rhine-lab-motion)（MIT）：莱茵生命 UI 设计 token 与动效语言。
 - 标签图标使用 PRTS 的罗德岛标志，版权归 Hypergryph / 鹰角网络所有。
+
+## 数据与机制
+
+- 干员技能 effect schema：[operator-skill-schema.md](docs/operator-skill-schema.md)
+- 929 条技能 effects 全量审核任务提示词：[干员技能effects审核-任务提示词.md](docs/tasks/干员技能effects审核-任务提示词.md)
