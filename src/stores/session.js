@@ -45,6 +45,7 @@ function writeArray(key, value) {
 }
 const defaultOptions = {
   mode: 'oneclick',
+  target: 'balanced',
   operationsPerDay: 2,
   weights: { lmd: 40, exp: 30, orundum: 20, trust: 10 },
   shardCosts: { guiyanLmd: 1600, deviceLmd: 1000 },

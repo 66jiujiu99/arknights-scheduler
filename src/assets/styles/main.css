@@ -239,6 +239,7 @@ code {
 .ak-option-head { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--rl-mute); margin-bottom: 9px; }
 .ak-option-head b { font-family: var(--rl-font-mono); color: var(--rl-orange-deep); }
 .ak-seg { display: flex; gap: 4px; }
+.ak-seg-3 button { font-family: inherit; font-size: 10.5px; }
 .ak-seg button { flex: 1; min-height: 32px; border: 1px solid var(--rl-faint); background: #f4f1ec; color: var(--rl-mute); font-family: var(--rl-font-mono); font-size: 11px; cursor: pointer; transition: 0.15s; }
 .ak-seg button:hover:not(:disabled) { border-color: var(--rl-ink); color: var(--rl-ink); }
 .ak-seg button.active { background: var(--rl-plate); border-color: var(--rl-plate); color: var(--rl-ink-inv); font-weight: 700; }

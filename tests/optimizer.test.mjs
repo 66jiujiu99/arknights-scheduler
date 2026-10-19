@@ -427,3 +427,18 @@ test('shard LMD cost can be overridden (e.g. 1200)', () => {
   const c = result.candidates[0]
   assert.ok(Math.abs(c.score.shard.lmdCost - c.score.shard.produced * 1200) < 1e-6)
 })
+
+
+test('target modes produce relative scores from 0 to 100', () => {
+  const data = mkData()
+  const player = mkPlayer(pool(40))
+  const result = generatePlans(player, BASE, data, {
+    mode: 'manual', operationsPerDay: 3, target: 'orundum',
+    products: ['赤金', '作战记录', '源石碎片'],
+    strategies: ['龙门商法', '开采协力'],
+    drones: false, weights: { lmd: 40, exp: 30, orundum: 20, trust: 10 },
+  })
+  const scores = result.candidates.map((c) => c.score.targetScore)
+  assert.ok(scores.every((s) => Number.isFinite(s) && s >= 0 && s <= 100))
+  assert.ok(Math.abs(Math.max(...scores) - 100) < 1e-9)
+})

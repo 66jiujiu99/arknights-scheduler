@@ -4,7 +4,7 @@
       <div>
         <div class="ak-kicker">STEP 02 · PLAN</div>
         <h1>排班方案</h1>
-        <p v-if="store.result">产物与策略按你的配置固定；3 个候选比较换班次数、效率与心情风险。{{ store.options.mode === 'oneclick' ? '在游戏内为每个设施保存这些队列，之后用队列轮换一键切换。' : '按时间表手动换；会客室 / 办公室 / 训练室可按各自周期单独换。' }}</p>
+        <p v-if="store.result">目标：{{ targetLabel }}；产物与策略按你的配置固定；3 个候选比较换班次数、效率与心情风险。{{ store.options.mode === 'oneclick' ? '在游戏内为每个设施保存这些队列，之后用队列轮换一键切换。' : '按时间表手动换；会客室 / 办公室 / 训练室可按各自周期单独换。' }}</p>
         <p v-else>还没有生成方案。</p>
       </div>
       <div class="ak-head-actions">
@@ -30,7 +30,7 @@
             <span class="ak-candidate-label">{{ c.label }} · {{ c.profile }}</span>
             <span class="ak-candidate-ops">{{ c.shiftHours }}h / 班</span>
           </div>
-          <div class="ak-candidate-score">{{ c.score.total.toFixed(1) }}<small>综合</small></div>
+          <div class="ak-candidate-score">{{ Math.round(c.score.targetScore ?? 0) }}<small>目标分</small></div>
           <div class="ak-candidate-metrics">
             <span>LMD {{ fmt(c.score.netLmd) }}</span>
             <span>玉 {{ fmt(c.score.orundum) }}</span>
@@ -41,7 +41,7 @@
           </div>
         </button>
       </div>
-      <p class="ak-hint" style="margin:-8px 0 14px">综合分已扣除搓玉龙门币消耗，可能为负；产销不平衡时按低的一侧计算。</p>
+      <p class="ak-hint" style="margin:-8px 0 14px">目标分按当前目标在 3 个候选里相对归一，最高 100；净龙门币已扣除搓玉消耗，可能为负；产销不平衡时按低的一侧计算。</p>
 
       <div v-if="candidate && candidate.operationsPerDay < 3 && candidate.score.minMood < 4" class="ak-alert ak-alert-warn">
         当前每天 {{ candidate.operationsPerDay }} 次的最低心情低于 4，建议改成 3 次/天，或提高宿舍/降低高消耗干员。
@@ -192,7 +192,8 @@
           </section>
 
           <section v-if="store.result.meta.recommendations?.length" class="ak-card">
-            <div class="ak-card-head"><h2>练度建议</h2><span class="ak-tag ak-tag-dim">只算龙门币 / 合成玉</span></div>
+            <div class="ak-card-head"><h2>练度建议</h2><span class="ak-tag ak-tag-dim">按瓶颈与目标</span></div>
+            <p v-if="store.result.meta.recommendationHint" class="ak-hint" style="margin-bottom:8px">{{ store.result.meta.recommendationHint }}</p>
             <div class="ak-rec" v-for="r in store.result.meta.recommendations" :key="r.charId + r.room">
               <div class="ak-rec-name">{{ r.name }} <small>{{ r.roomName }}</small></div>
               <div class="ak-rec-detail">{{ r.roomName }} · {{ r.resource }} · {{ r.skill }} · {{ reqText(r) }} <b>+{{ r.gain }}%</b></div>
@@ -216,6 +217,7 @@ import { computed, ref } from 'vue'
 import { store } from '../stores/session'
 
 const queueIndex = ref(0)
+const targetLabel = computed(() => ({ balanced: '均衡', lmd: '主攻龙门币', orundum: '主攻合成玉' }[store.options.target] || '均衡'))
 const candidate = computed(() => store.result?.candidates?.[store.selected] || null)
 const queue = computed(() => candidate.value?.queues?.[queueIndex.value] || null)
 const fixedRows = computed(() => [

@@ -120,10 +120,19 @@
 
           <div class="ak-option">
             <div class="ak-option-head"><span>每天换班次数</span><b>{{ store.options.mode === 'oneclick' ? Math.min(3, store.options.operationsPerDay) : store.options.operationsPerDay }}</b></div>
-            <div class="ak-seg">
+            <div class="ak-seg ak-ops-seg">
               <button v-for="n in 4" :key="n" :disabled="store.options.mode === 'oneclick' && n > 3" :class="{ active: effectiveOps === n }" @click="setOps(n)">{{ n }}</button>
             </div>
             <p class="ak-hint">{{ hoursPerShift }} 小时一班{{ effectiveOps > 3 ? '；游戏预设只有 3 套，4 次需手动改' : '' }}</p>
+          </div>
+
+          <div class="ak-option">
+            <div class="ak-option-head"><span>目标</span><span class="ak-hint">影响目标分与练度建议</span></div>
+            <div class="ak-seg ak-seg-3 ak-target-seg">
+              <button :class="{ active: store.options.target === 'balanced' }" @click="updateOptions({ target: 'balanced' })">均衡</button>
+              <button :class="{ active: store.options.target === 'lmd' }" @click="updateOptions({ target: 'lmd' })">主攻龙门币</button>
+              <button :class="{ active: store.options.target === 'orundum' }" @click="updateOptions({ target: 'orundum' })">主攻合成玉</button>
+            </div>
           </div>
 
           <div class="ak-option">
