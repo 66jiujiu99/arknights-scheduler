@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>罗德岛智能排班系统</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:linear-gradient(135deg,#0a0a1a 0%,#1a1a3e 50%,#0d0d2b 100%);color:#e0e0e0;font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;min-height:100vh}
+.page{max-width:600px;margin:0 auto;padding:30px 16px 60px}
+.logo{text-align:center;margin-bottom:24px;position:relative}
+.logo::before{content:'◇';position:absolute;top:-8px;left:50%;transform:translateX(-50%);font-size:48px;color:#d4a843;opacity:.15}
+.logo h1{color:#d4a843;font-size:22px;letter-spacing:3px;text-shadow:0 0 20px rgba(212,168,67,.2)}
+.logo p{color:#666;font-size:12px;margin-top:4px;letter-spacing:1px}
+.card{background:rgba(22,33,62,.85);border-radius:12px;border:1px solid rgba(42,58,94,.6);padding:24px;margin-bottom:14px;backdrop-filter:blur(10px)}
+.card h2{font-size:14px;color:#d4a843;margin-bottom:12px;display:flex;align-items:center;gap:8px;letter-spacing:.5px}
+.steps{background:rgba(15,22,41,.6);border-radius:8px;padding:12px 14px;font-size:12.5px;color:#bbb;line-height:1.8;margin-bottom:14px;border:1px solid rgba(42,58,94,.3)}
+.steps strong{color:#d4a843}
+.steps code{display:block;background:#0a0a1a;padding:8px 10px;border-radius:6px;font-size:11.5px;color:#6bb5ff;word-break:break-all;margin:6px 0;border:1px solid rgba(42,58,94,.3)}
+.steps a{color:#6bb5ff;text-decoration:none}
+.steps a:hover{text-decoration:underline}
+label{display:block;font-size:12px;color:#888;margin-bottom:5px;letter-spacing:.5px}
+input{width:100%;padding:10px 14px;background:rgba(15,22,41,.8);border:1px solid rgba(42,58,94,.5);border-radius:8px;color:#e0e0e0;font-size:13px;outline:none;transition:all .2s}
+input:focus{border-color:rgba(212,168,67,.5);box-shadow:0 0 12px rgba(212,168,67,.08)}
+.btn{width:100%;padding:11px;border:none;border-radius:8px;font-size:13px;cursor:pointer;transition:all .2s;margin-top:4px;letter-spacing:1px}
+.btn-primary{background:linear-gradient(135deg,#d4a843,#c49430);color:#0a0a1a;font-weight:700}
+.btn-primary:hover{opacity:.92;transform:translateY(-1px);box-shadow:0 4px 16px rgba(212,168,67,.25)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.status{padding:10px 14px;border-radius:6px;font-size:12.5px;margin-top:10px;display:none;animation:fadeIn .3s}
+.status.error{display:block;background:rgba(61,26,26,.7);border:1px solid rgba(107,42,42,.5);color:#ff6b6b}
+.status.success{display:block;background:rgba(26,61,26,.7);border:1px solid rgba(42,107,42,.5);color:#5ddf5d}
+.status.info{display:block;background:rgba(26,42,61,.7);border:1px solid rgba(42,74,107,.5);color:#6bb5ff}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(10,10,26,.3);border-top-color:#0a0a1a;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.result{display:none;margin-top:12px;animation:fadeIn .4s}
+.result.show{display:block}
+.pre-wrap{background:rgba(15,22,41,.6);padding:10px;border-radius:6px;font-size:11px;color:#6bb5ff;overflow-x:auto;max-height:140px;border:1px solid rgba(42,58,94,.3)}
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.stat-item{background:rgba(15,22,41,.6);border-radius:8px;padding:12px 8px;text-align:center;border:1px solid rgba(42,58,94,.3)}
+.stat-num{font-size:22px;font-weight:700;color:#d4a843}
+.stat-label{font-size:10.5px;color:#777;margin-top:2px;letter-spacing:.5px}
+.table-wrap{max-height:320px;overflow-y:auto;border-radius:8px;border:1px solid rgba(42,58,94,.3)}
+.table-wrap::-webkit-scrollbar{width:4px}
+.table-wrap::-webkit-scrollbar-track{background:transparent}
+.table-wrap::-webkit-scrollbar-thumb{background:rgba(212,168,67,.3);border-radius:2px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:8px 10px;background:rgba(15,22,41,.8);color:#d4a843;font-weight:600;position:sticky;top:0;z-index:1;border-bottom:1px solid rgba(42,58,94,.5);letter-spacing:.5px}
+td{padding:7px 10px;border-bottom:1px solid rgba(42,58,94,.15)}
+tr:hover td{background:rgba(212,168,67,.04)}
+.rarity6{color:#ff6b35;font-weight:600}.rarity5{color:#d4a843}.rarity4{color:#aa88ff}.rarity3{color:#88ccff}.rarity2{color:#88dd88}.rarity1{color:#aaa}
+.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:4px;vertical-align:middle}
+.tag-6{background:rgba(255,107,53,.15);color:#ff6b35}
+.tag-5{background:rgba(212,168,67,.15);color:#d4a843}
+.tag-4{background:rgba(170,136,255,.15);color:#aa88ff}
+.tag-3{background:rgba(136,204,255,.15);color:#88ccff}
+.tag-2{background:rgba(136,221,136,.15);color:#88dd88}
+.tag-1{background:rgba(170,170,170,.15);color:#aaa}
+.elite-badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;background:rgba(42,58,94,.4);color:#888}
+.shift-tabs{display:flex;gap:6px;margin-bottom:10px}
+.shift-tab{padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;background:rgba(15,22,41,.6);border:1px solid rgba(42,58,94,.3);color:#888;transition:all .2s}
+.shift-tab.active{background:rgba(212,168,67,.15);border-color:rgba(212,168,67,.4);color:#d4a843}
+.facility-card{background:rgba(15,22,41,.6);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid rgba(42,58,94,.3)}
+.facility-card h4{font-size:12px;color:#d4a843;margin-bottom:6px}
+.facility-card .slot{display:flex;align-items:center;gap:6px;padding:3px 6px;margin:2px 0;font-size:11px;border-radius:4px}
+.facility-card .slot .name{flex:1;color:#e0e0e0}
+.facility-card .slot .eff{color:#6bb5ff;font-size:10px}
+.facility-card .slot .eff-good{color:#5ddf5d}
+.eff-total{text-align:center;font-size:13px;color:#d4a843;padding:8px;margin-top:8px;background:rgba(212,168,67,.06);border-radius:6px}
+.footer{text-align:center;font-size:11px;color:#555;margin-top:32px;letter-spacing:.5px}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="logo">
+    <h1>◇ 罗德岛智能排班系统</h1>
+    <p>基于森空岛 API · 数据本地存储</p>
+  </div>
+  
+  <div class="card">
+    <h2>🔐 登录</h2>
+    <div class="steps">
+      <strong>一步获取凭证</strong><br>
+      1. 打开 <a href="https://www.skland.com" target="_blank" style="color:#5398ff">森空岛官网</a> 并登录<br>
+      2. F12 → Console → 粘贴以下命令回车：<br>
+      <code>copy(localStorage.getItem('SK_OAUTH_CRED_KEY'))</code>
+      3. 回到本页粘贴到下方输入框（兼容 "cred,token" 格式，token 可省略，省略时自动获取）
+    </div>
+    <label>Credential</label>
+    <input id="credInput" placeholder="粘贴从森空岛复制的 cred"/>
+    <button id="loginBtn" class="btn btn-primary" type="button">获取干员数据</button>
+    <div id="status" class="status"></div>
+  </div>
+  
+  <div id="configCard" class="card">
+    <h2>🏗️ 自定义基建配置</h2>
+    <div style="font-size:12px;color:#888;margin-bottom:12px">
+      按你的实际基建填写（数据仅存本地）。左侧 9 格可分别建造成 <b>制造站(≤5) / 贸易站(≤5) / 发电站(≤3)</b>；
+      设施等级不能超过控制中枢等级，可放人数随等级变化。改动自动保存。
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+      <label style="margin:0;font-size:12px">控制中枢等级</label>
+      <select id="cfgControlLevel" style="width:88px;padding:6px;background:rgba(15,22,41,.8);border:1px solid rgba(42,58,94,.5);border-radius:6px;color:#e0e0e0;font-size:13px"></select>
+      <span id="cfgControlSlots" style="font-size:12px;color:#6bb5ff"></span>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;color:#888;margin-bottom:4px">左侧九宫格（点击切换：制造站 → 贸易站 → 发电站）</div>
+      <div id="cfgGrid" style="display:grid;grid-template-columns:repeat(3,76px);gap:6px"></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;color:#888;margin-bottom:4px">产物 / 策略配置（点击切换，与排班联动）</div>
+      <div id="cfgProduction"></div>
+    </div>
+    <div id="cfgLevels" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <label style="margin:0;font-size:12px;display:flex;align-items:center;gap:4px">宿舍数量
+        <select id="cfgDorms" style="padding:5px;background:rgba(15,22,41,.8);border:1px solid rgba(42,58,94,.5);border-radius:6px;color:#e0e0e0"></select>
+      </label>
+      <label style="margin:0;font-size:12px;display:flex;align-items:center;gap:4px">
+        <input type="checkbox" id="cfgAssistant" style="accent-color:#d4a843"/> 启用基建副手位（B1-B4）
+      </label>
+    </div>
+    <div id="cfgSummary" style="font-size:12px;color:#d4a843;background:rgba(212,168,67,.08);border:1px solid rgba(212,168,67,.25);border-radius:6px;padding:8px 10px;margin-bottom:8px"></div>
+    <div id="cfgIssues" style="font-size:12px;color:#ff6b6b;margin-bottom:8px;display:none"></div>
+    <button id="cfgSyncBtn" class="btn btn-secondary" type="button" style="padding:6px 12px;font-size:12px;width:auto;background:rgba(42,58,94,.4);border:1px solid rgba(42,58,94,.6);color:#6bb5ff;border-radius:6px;cursor:pointer">🔄 从游戏数据同步（自动填等级/数量）</button>
+  </div>
+  
+  <div id="resultCard" class="card result">
+    <h2>📊 数据概览</h2>
+    <div id="stats" class="stat-grid"></div>
+    <h2 style="margin-top:14px">🧑‍✈️ 干员列表</h2>
+    <div class="table-wrap" id="tableWrap"></div>
+  </div>
+  
+<div id="scheduleCard" class="card">
+  <h2>📋 智能排班</h2>
+  <button id="scheduleBtn" class="btn btn-primary" type="button">⚡ 生成排班表</button>
+    <div id="scheduleResult"></div>
+  </div>
+  <div class="footer">数据仅存于本地浏览器 · 罗德岛智能排班系统</div>
+</div>
+
+<script>
+// ===== 森空岛 API（2026-08 从官方 web 端逆向确认的现行协议）=====
+// 1. GET zonai.skland.com/web/v1/auth/refresh （header: cred）→ data.token（签名 token）
+// 2. 业务请求需签名：sign = md5(hmacSHA256(path + (GET?query:body) + timestamp +
+//    JSON.stringify({platform:'3', timestamp, dId, vName}), token))
+// 3. zonai.skland.com 允许浏览器跨域（ACAO: *），GitHub Pages 直连可用；
+//    CF Pages / 本地开发走仓库内 functions 代理（/api/sw、/api/sk）
+const SKLAND = 'https://zonai.skland.com'
+
+function apiUrl(url) {
+  const h = location.hostname
+  const onCf = h.includes('pages.dev') || h === 'localhost' || h === '127.0.0.1'
+  if (!onCf) return url
+  if (url.startsWith(SKLAND + '/web')) return '/api/sw' + url.slice(SKLAND.length + 4)
+  return '/api/sk' + url.slice(SKLAND.length + 4)
+}
+
+function getDId() {
+  let id = localStorage.getItem('ak_did')
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : 'web-' + Math.random().toString(16).slice(2) + Date.now().toString(16))
+    localStorage.setItem('ak_did', id)
+  }
+  return id
+}
+
+async function hmacSHA256Hex(key, msg) {
+  const enc = new TextEncoder()
+  const keyBuf = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', keyBuf, enc.encode(msg))
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+// 标准 MD5（RFC 1321），已用测试向量验证
+function md5(s) {
+  const HEX = '0123456789abcdef'
+  const T = [0xd76aa478,0xe8c7b756,0x242070db,0xc1bdceee,0xf57c0faf,0x4787c62a,0xa8304613,0xfd469501,0x698098d8,0x8b44f7af,0xffff5bb1,0x895cd7be,0x6b901122,0xfd987193,0xa679438e,0x49b40821,0xf61e2562,0xc040b340,0x265e5a51,0xe9b6c7aa,0xd62f105d,0x02441453,0xd8a1e681,0xe7d3fbc8,0x21e1cde6,0xc33707d6,0xf4d50d87,0x455a14ed,0xa9e3e905,0xfcefa3f8,0x676f02d9,0x8d2a4c8a,0xfffa3942,0x8771f681,0x6d9d6122,0xfde5380c,0xa4beea44,0x4bdecfa9,0xf6bb4b60,0xbebfbc70,0x289b7ec6,0xeaa127fa,0xd4ef3085,0x04881d05,0xd9d4d039,0xe6db99e5,0x1fa27cf8,0xc4ac5665,0xf4292244,0x432aff97,0xab9423a7,0xfc93a039,0x655b59c3,0x8f0ccc92,0xffeff47d,0x85845dd1,0x6fa87e4f,0xfe2ce6e0,0xa3014314,0x4e0811a1,0xf7537e82,0xbd3af235,0x2ad7d2bb,0xeb86d391]
+  const S = [[7,12,17,22],[5,9,14,20],[4,11,16,23],[6,10,15,21]]
+  const enc = new TextEncoder()
+  const bytes = enc.encode(s)
+  const l = bytes.length
+  const words = (((l + 8) >> 6) + 1) * 16
+  const X = new Uint32Array(words)
+  for (let i = 0; i < l; i++) X[i >> 2] |= (bytes[i] & 255) << ((i % 4) * 8)
+  X[l >> 2] |= 0x80 << ((l % 4) * 8)
+  X[words - 2] = (l * 8) >>> 0
+  X[words - 1] = Math.floor(l / 0x100000000)
+  const rotl = (v, n) => (v << n) | (v >>> (32 - n))
+  let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476
+  for (let i = 0; i < words; i += 16) {
+    let A = a0, B = b0, C = c0, D = d0
+    for (let j = 0; j < 64; j++) {
+      let f, g, s
+      if (j < 16)      { f = (B & C) | (~B & D);          g = j;                s = S[0][j % 4] }
+      else if (j < 32) { f = (D & B) | (~D & C);          g = (5 * j + 1) % 16; s = S[1][j % 4] }
+      else if (j < 48) { f = B ^ C ^ D;                   g = (3 * j + 5) % 16; s = S[2][j % 4] }
+      else             { f = C ^ (B | ~D);                g = (7 * j) % 16;    s = S[3][j % 4] }
+      const tmp = D
+      D = C
+      C = B
+      B = (B + rotl((A + f + X[i + g] + T[j]) | 0, s)) | 0
+      A = tmp
+    }
+    a0 = (a0 + A) >>> 0; b0 = (b0 + B) >>> 0; c0 = (c0 + C) >>> 0; d0 = (d0 + D) >>> 0
+  }
+  let r = ''
+  for (const v of [a0, b0, c0, d0]) {
+    for (let i = 0; i < 4; i++) { const byte = (v >>> (i * 8)) & 255; r += HEX[(byte >> 4) & 15] + HEX[byte & 15] }
+  }
+  return r
+}
+
+// 与官方 web 端一致的签名
+async function computeSign(path, query, method, body, ts, token) {
+  const headers = { platform: '3', timestamp: ts, dId: getDId(), vName: '1.0.0' }
+  let text = path
+  text += method === 'GET' ? (query || '') : (body || '')
+  text += ts
+  text += JSON.stringify(headers)
+  const hmacHex = await hmacSHA256Hex(token, text)
+  return { sign: md5(hmacHex), ...headers }
+}
+
+async function api(url, headers) {
+  const r = await fetch(url, { headers })
+  const t = await r.text()
+  try { return JSON.parse(t) } catch { return { code: -1, message: t.slice(0, 200) } }
+}
+
+async function refreshToken(cred) {
+  const r = await api(apiUrl(SKLAND + '/web/v1/auth/refresh'), { cred })
+  if (r.code !== 0) throw new Error('刷新token失败: ' + (r.message || r.code))
+  return r.data?.token
+}
+
+async function signedApi(path, query, cred, token) {
+  const ts = Math.floor(Date.now() / 1000).toString()
+  const sig = await computeSign(path, query, 'GET', '', ts, token)
+  const url = apiUrl(SKLAND + path + (query ? '?' + query : ''))
+  return api(url, { cred, sign: sig.sign, timestamp: sig.timestamp, dId: sig.dId, platform: sig.platform, vName: sig.vName })
+}
+
+function showStatus(type, msg) {
+  const el = document.getElementById('status')
+  el.className = 'status ' + type
+  el.innerHTML = msg
+}
+
+async function login() {
+  const btn = document.getElementById('loginBtn')
+  let cred = document.getElementById('credInput').value.trim()
+  if (!cred) { showStatus('error', '请输入credential'); return }
+  // 兼容 "cred,token" 格式（token 可省略，省略时自动用 cred 换取）
+  let token = ''
+  if (cred.includes(',')) { const parts = cred.split(','); cred = parts[0].trim(); token = (parts[1] || '').trim() }
+
+  btn.disabled = true
+  btn.innerHTML = '<span class="spinner"></span>获取中...'
+
+  try {
+    if (!token) {
+      showStatus('info', '正在获取签名token...')
+      token = await refreshToken(cred)
+      if (!token) throw new Error('刷新token失败: 响应缺少 token')
+    }
+    localStorage.setItem('ak_token', token)
+
+    showStatus('info', '正在获取账号绑定...')
+    const r2 = await signedApi('/api/v1/game/player/binding', '', cred, token)
+    if (r2.code !== 0) throw new Error('获取绑定失败: ' + (r2.message || r2.code))
+
+    let uid = '0', nick = ''
+    for (const a of (r2.data?.list || [])) {
+      if (a.appCode === 'arknights') {
+        uid = a.bindingList[0].uid
+        nick = a.bindingList[0].nickName || ''
+        break
+      }
+    }
+    if (uid === '0') throw new Error('未找到明日方舟角色绑定')
+    showStatus('info', 'UID: ' + uid)
+
+    const r3 = await signedApi('/api/v1/game/player/info', 'uid=' + uid, cred, token)
+    if (r3.code !== 0) throw new Error('获取数据失败: ' + (r3.message || r3.code))
+
+    const d = r3.data
+    const chars = d.chars || []
+    const building = d.building || {}
+    const charInfoMap = d.charInfoMap || {}
+
+    // 干员职业（区分多职业重名干员，如三个阿米娅：术师/近卫/医疗）
+    const PROF_CN = { CASTER: '术师', WARRIOR: '近卫', MEDIC: '医疗', PIONEER: '先锋', SNIPER: '狙击', SUPPORT: '辅助', SPECIAL: '特种', TANK: '重装' }
+    const nameCount = {}
+    for (const c of chars) { const n = charInfoMap[c.id || c.charId]?.name || c.id || c.charId; nameCount[n] = (nameCount[n] || 0) + 1 }
+    const displayNameOf = c => {
+      const id = c.id || c.charId
+      const info = charInfoMap[id] || {}
+      const n = info.name || id
+      if (nameCount[n] > 1) return n + '(' + (PROF_CN[info.profession] || info.profession || '') + ')'
+      return n
+    }
+    // charInfoMap 的 rarity 是 0 起始（5星=4），转成实际星级需 +1；
+    // 注意 chars 数组里的 rarity 字段恒为 0（无用），一律以 charInfoMap 为准
+    const starOf = c => ((charInfoMap[c.id || c.charId]?.rarity ?? -1) + 1) || 1
+
+    showStatus('success', '✅ 获取成功！' + chars.length + '名干员')
+
+    // 统计
+    const stats = document.getElementById('stats')
+    stats.innerHTML = '' +
+      '<div class="stat-item"><div class="stat-num">' + chars.length + '</div><div class="stat-label">干员</div></div>' +
+      '<div class="stat-item"><div class="stat-num">' + (d.status?.level || '?') + '</div><div class="stat-label">博士等级</div></div>' +
+      '<div class="stat-item"><div class="stat-num">' + ((building.manufactures || []).length) + '</div><div class="stat-label">制造站</div></div>'
+
+    // 干员表格
+    let html = '<table><thead><tr><th>名字</th><th>星级</th><th>等级</th><th>精英</th></tr></thead><tbody>'
+    for (const c of chars) {
+      const id = c.id || c.charId
+      const name = displayNameOf(c)
+      const rarity = starOf(c)
+      const cls = 'rarity' + rarity
+      const tagCls = 'tag tag-' + rarity
+      html += '<tr><td class="' + cls + '">' + name + '</td>' +
+        '<td><span class="' + tagCls + '">★' + rarity + '</span></td>' +
+        '<td>' + (c.level || '?') + '</td>' +
+        '<td><span class="elite-badge">' + ('精英' + (c.evolvePhase || 0)) + '</span></td></tr>'
+    }
+    html += '</tbody></table>'
+    document.getElementById('tableWrap').innerHTML = html
+    document.getElementById('resultCard').classList.add('show')
+    document.getElementById('scheduleCard').classList.add('show')
+
+    // 存数据
+    localStorage.setItem('ak_user_data', JSON.stringify({
+      nickname: d.status?.name || nick || '博士',
+      level: d.status?.level || 0,
+      uid,
+      chars: chars.map(c => {
+        const id = c.id || c.charId
+        const info = charInfoMap[id]
+        return {
+          charId: id,
+          name: info?.name || id,
+          displayName: displayNameOf(c),
+          rarity: starOf(c),
+          level: c.level || 1,
+          elite: c.evolvePhase || 0,
+          potential: Math.ceil((c.potentialRank || 0) + 1),
+          own: true,
+        }
+      }),
+      building: {
+        control: building.control || null,
+        manufactures: building.manufactures || [],
+        tradings: building.tradings || [],
+        dormitories: building.dormitories || [],
+        powers: building.powers || [],
+        meeting: building.meeting || null,
+        hire: building.hire || null,
+        training: building.training || null,
+        tiredChars: building.tiredChars || [],
+        labor: building.labor || {},
+      },
+      charInfoMap: Object.fromEntries(Object.entries(charInfoMap).map(([k, v]) => [k, { name: v.name, rarity: v.rarity }])),
+    }))
+
+    // 登录后：直接用本次拉取的游戏数据初始化基建配置（结构部分），产物/策略选择保留
+    seedConfigFromBuilding(building, true)
+    if (!localStorage.getItem('ak_mf_config')) refreshMfConfig(Math.max((building.manufactures || []).length, 2))
+
+  } catch (e) {
+    showStatus('error', '❌ ' + e.message)
+    console.error(e)
+  } finally {
+    btn.disabled = false
+    btn.innerHTML = '获取干员数据'
+  }
+}
+
+// ===== 基建配置（自定义九宫格 + 设施等级，规则来自官方数据）=====
+// 规则（PRTS + building_data.json 核实）：
+//   控制中枢 1-5 人（=中枢等级）；制造站/贸易站 每间 1/2/3 人（按等级），最多 5 间；
+//   发电站 每间 1 人，最多 3 间；宿舍 4 间 × 5 人；会客室/办公室/训练室(主+协助)/加工站 各 1 间
+const ROOM_TYPES = {
+  MANUFACTURE: { name: '制造站', maxCount: 5, maxLevel: 3, slotsByLevel: { 1: 1, 2: 2, 3: 3 }, mood: 0.75, color: '#5ddf5d' },
+  TRADING:     { name: '贸易站', maxCount: 5, maxLevel: 3, slotsByLevel: { 1: 1, 2: 2, 3: 3 }, mood: 0.75, color: '#6bb5ff' },
+  POWER:       { name: '发电站', maxCount: 3, maxLevel: 3, slotsByLevel: { 1: 1, 2: 1, 3: 1 }, mood: 0.75, color: '#d4a843' },
+}
+const FIXED_ROOMS = {
+  CONTROL:   { name: '控制中枢', maxLevel: 5, slotsByLevel: { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5 }, mood: 0.5 },
+  DORMITORY: { name: '宿舍',     maxLevel: 5, slots: 5, mood: 0 },
+  MEETING:   { name: '会客室',   maxLevel: 3, slotsByLevel: { 1: 1, 2: 2, 3: 2 }, mood: 0.5 }, // Lv.1 1人，Lv.2+ 2人
+  HIRE:      { name: '办公室',   maxLevel: 3, slotsByLevel: { 1: 1, 2: 2, 3: 2 }, mood: 0.5 }, // 同上
+  TRAINING:  { name: '训练室',   maxLevel: 3, slots: 2, mood: 0.3 }, // 1 主位 + 1 协助位
+  WORKSHOP:  { name: '加工站',   maxLevel: 3, slots: 1, mood: 0 },
+}
+const DEFAULT_CONFIG = {
+  controlLevel: 5,
+  grid: ['MANUFACTURE', 'MANUFACTURE', 'MANUFACTURE', 'TRADING', 'TRADING', 'TRADING', 'POWER', 'POWER', 'POWER'],
+  levels: { MANUFACTURE: 3, TRADING: 3, POWER: 3, DORMITORY: 5, MEETING: 1, HIRE: 1, TRAINING: 1, WORKSHOP: 1 },
+  dorms: 4,
+  useAssistant: true,
+}
+let baseConfig = null
+
+function loadConfig() {
+  try { const s = JSON.parse(localStorage.getItem('ak_base_config') || 'null'); baseConfig = Object.assign(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), s || {}) }
+  catch (e) { baseConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG)) }
+}
+function persistConfig() { localStorage.setItem('ak_base_config', JSON.stringify(baseConfig)); renderConfigUI() }
+function slotsOf(type) {
+  if (type === 'CONTROL') return baseConfig.controlLevel
+  const info = ROOM_TYPES[type] || FIXED_ROOMS[type]
+  if (info.slotsByLevel) return info.slotsByLevel[baseConfig.levels[type] || 1] || 1
+  return info.slots || 1
+}
+function gridCounts() { const c = { MANUFACTURE: 0, TRADING: 0, POWER: 0 }; baseConfig.grid.forEach(t => { c[t]++ }); return c }
+function assistantCount() { const lv = baseConfig.controlLevel; return 1 + (lv >= 3 ? 1 : 0) + (lv >= 4 ? 1 : 0) + (lv >= 5 ? 1 : 0) }
+function validateConfig() {
+  const issues = []
+  const g = gridCounts()
+  for (const t of ['MANUFACTURE', 'TRADING', 'POWER']) if (g[t] > ROOM_TYPES[t].maxCount) issues.push(ROOM_TYPES[t].name + ' ' + g[t] + ' 个，超过上限 ' + ROOM_TYPES[t].maxCount + ' 个')
+  if (baseConfig.grid.length !== 9) issues.push('左侧房间必须是 9 格')
+  if (baseConfig.dorms < 1 || baseConfig.dorms > 4) issues.push('宿舍数量应为 1-4')
+  for (const t of Object.keys(baseConfig.levels)) {
+    const info = ROOM_TYPES[t] || FIXED_ROOMS[t]
+    const lv = baseConfig.levels[t]
+    if (lv < 1 || lv > info.maxLevel) issues.push(info.name + '等级 ' + lv + ' 无效（1-' + info.maxLevel + '）')
+    else if (lv > baseConfig.controlLevel) issues.push(info.name + '等级 ' + lv + ' 不能超过控制中枢等级 ' + baseConfig.controlLevel)
+  }
+  return issues
+}
+// 中枢升级条件（软提示，不强制）：Lv.2需5个Lv1 / Lv.3需6个Lv1 / Lv.4需8个Lv2 / Lv.5需10个Lv3 设施
+function controlUpgradeHint() {
+  const need = { 2: [1, 5], 3: [1, 6], 4: [2, 8], 5: [3, 10] }[baseConfig.controlLevel]
+  if (!need) return ''
+  const g = gridCounts()
+  const facLevels = []
+  for (const t of ['MANUFACTURE', 'TRADING', 'POWER']) for (let i = 0; i < g[t]; i++) facLevels.push(baseConfig.levels[t])
+  for (let i = 0; i < baseConfig.dorms; i++) facLevels.push(baseConfig.levels.DORMITORY)
+  for (const t of ['MEETING', 'HIRE', 'TRAINING', 'WORKSHOP']) facLevels.push(baseConfig.levels[t])
+  const have = facLevels.filter(lv => lv >= need[0]).length
+  return have >= need[1] ? '' : ('中枢升级提示：Lv.' + baseConfig.controlLevel + ' 需 ' + need[1] + ' 个 Lv.' + need[0] + ' 设施（当前 ' + have + ' 个）')
+}
+// 从游戏数据自动填充基建配置（中枢等级、各设施等级、九宫格、宿舍数）
+function seedConfigFromBuilding(b, force) {
+  if (!force && localStorage.getItem('ak_base_config')) return
+  const lvOf = (arr) => { const l = (arr || []).map(x => (x && x.level) || 1); return l.length ? Math.max.apply(null, l) : null }
+  const mf = Math.min(5, (b.manufactures || []).length), tr = Math.min(5, (b.tradings || []).length), pw = Math.min(3, (b.powers || []).length)
+  const grid = []
+  for (let i = 0; i < mf; i++) grid.push('MANUFACTURE')
+  for (let i = 0; i < tr; i++) grid.push('TRADING')
+  for (let i = 0; i < pw; i++) grid.push('POWER')
+  // 剩余空格按 发电站(<3) → 贸易站(<5) → 制造站(<5) 填充，保证不超上限
+  while (grid.length < 9) {
+    const c = { MANUFACTURE: 0, TRADING: 0, POWER: 0 }
+    grid.forEach(t => { c[t]++ })
+    if (c.POWER < 3) grid.push('POWER')
+    else if (c.TRADING < 5) grid.push('TRADING')
+    else grid.push('MANUFACTURE')
+  }
+  grid.length = 9
+  const dorms = Math.max(1, Math.min(4, (b.dormitories || []).length || 4))
+  baseConfig = Object.assign(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), {
+    controlLevel: Math.max(1, Math.min(5, (b.control && b.control.level) || 5)),
+    grid,
+    levels: {
+      MANUFACTURE: lvOf(b.manufactures) || 3,
+      TRADING: lvOf(b.tradings) || 3,
+      POWER: lvOf(b.powers) || 1,
+      DORMITORY: lvOf(b.dormitories) || 5,
+      MEETING: (b.meeting && b.meeting.level) || 1,
+      HIRE: (b.hire && b.hire.level) || 1,
+      TRAINING: (b.training && b.training.level) || 1,
+      WORKSHOP: 1,
+    },
+    dorms,
+  })
+  // 贸易站策略数组长度与贸易站数量同步（默认龙门商法）
+  const trCfg = getTradeStrategies()
+  if (trCfg.length !== grid.filter(t => t === 'TRADING').length) {
+    const t = []
+    for (let i = 0; i < grid.filter(x => x === 'TRADING').length; i++) t.push(trCfg[i] || '龙门商法')
+    localStorage.setItem('ak_trade_config', JSON.stringify(t))
+  }
+  persistConfig()
+}
+function syncConfigFromUserData() {
+  try {
+    const ud = JSON.parse(localStorage.getItem('ak_user_data') || '{}')
+    if (!ud.building || !Object.keys(ud.building).length) { alert('请先登录获取干员数据'); return }
+    seedConfigFromBuilding(ud.building, true)
+    alert('已按游戏数据同步基建配置')
+  } catch (e) { alert('同步失败: ' + e.message) }
+}
+
+function renderConfigUI() {
+  if (!document.getElementById('cfgGrid')) return
+  // 中枢等级
+  const cl = document.getElementById('cfgControlLevel')
+  cl.innerHTML = ''
+  for (let lv = 1; lv <= 5; lv++) { const o = document.createElement('option'); o.value = lv; o.textContent = 'Lv.' + lv; if (lv === baseConfig.controlLevel) o.selected = true; cl.appendChild(o) }
+  document.getElementById('cfgControlSlots').textContent = '→ 可进驻 ' + slotsOf('CONTROL') + ' 人'
+  // 九宫格
+  const g = document.getElementById('cfgGrid')
+  g.innerHTML = ''
+  baseConfig.grid.forEach((t, i) => {
+    const info = ROOM_TYPES[t]
+    const d = document.createElement('div')
+    d.textContent = info.name
+    d.title = '点击切换'
+    d.style.cssText = 'cursor:pointer;text-align:center;padding:8px 2px;border-radius:6px;font-size:11px;border:1px solid ' + info.color + '66;background:' + info.color + '1a;color:' + info.color + ';letter-spacing:.5px'
+    d.onclick = () => { const order = ['MANUFACTURE', 'TRADING', 'POWER']; baseConfig.grid[i] = order[(order.indexOf(t) + 1) % 3]; refreshMfConfig(gridCounts().MANUFACTURE); persistConfig() }
+    g.appendChild(d)
+  })
+  // 各设施等级
+  const lv = document.getElementById('cfgLevels')
+  lv.innerHTML = ''
+  for (const t of ['MANUFACTURE', 'TRADING', 'POWER', 'DORMITORY', 'MEETING', 'HIRE', 'TRAINING', 'WORKSHOP']) {
+    const info = ROOM_TYPES[t] || FIXED_ROOMS[t]
+    const row = document.createElement('label')
+    row.style.cssText = 'font-size:11px;color:#aaa;display:flex;flex-direction:column;gap:2px;align-items:center'
+    const sel = document.createElement('select')
+    sel.style.cssText = 'padding:4px;background:rgba(15,22,41,.8);border:1px solid rgba(42,58,94,.5);border-radius:6px;color:#e0e0e0;font-size:12px'
+    for (let i = 1; i <= info.maxLevel; i++) { const o = document.createElement('option'); o.value = i; o.textContent = 'Lv.' + i; if (i === baseConfig.levels[t]) o.selected = true; sel.appendChild(o) }
+    sel.onchange = () => { baseConfig.levels[t] = parseInt(sel.value); persistConfig() }
+    const cap = document.createElement('span')
+    cap.textContent = info.name + ' ' + slotsOf(t) + '人'
+    row.appendChild(cap)
+    row.appendChild(sel)
+    lv.appendChild(row)
+  }
+  // 宿舍数量 / 副手
+  const dorms = document.getElementById('cfgDorms')
+  dorms.innerHTML = ''
+  for (let i = 1; i <= 4; i++) { const o = document.createElement('option'); o.value = i; o.textContent = i + ' 间'; if (i === baseConfig.dorms) o.selected = true; dorms.appendChild(o) }
+  document.getElementById('cfgAssistant').checked = !!baseConfig.useAssistant
+  // 汇总 + 校验
+  const g2 = gridCounts()
+  const parts = []
+  parts.push('制造站 ×' + g2.MANUFACTURE + '（' + g2.MANUFACTURE * slotsOf('MANUFACTURE') + '人）')
+  parts.push('贸易站 ×' + g2.TRADING + '（' + g2.TRADING * slotsOf('TRADING') + '人）')
+  parts.push('发电站 ×' + g2.POWER + '（' + g2.POWER * slotsOf('POWER') + '人）')
+  parts.push('中枢 ' + slotsOf('CONTROL') + '人')
+  parts.push('会客室 ' + slotsOf('MEETING') + '人')
+  parts.push('办公室 ' + slotsOf('HIRE') + '人')
+  parts.push('训练室 ' + slotsOf('TRAINING') + '人')
+  parts.push('加工站 ' + slotsOf('WORKSHOP') + '人')
+  parts.push('宿舍 ×' + baseConfig.dorms + '（' + baseConfig.dorms * 5 + '人）')
+  if (baseConfig.useAssistant) parts.push('副手 ' + assistantCount() + '人')
+  const hint = controlUpgradeHint()
+  document.getElementById('cfgSummary').textContent = '📐 总进驻位：' + parts.join('，') + (hint ? '　' + hint : '')
+  const issues = validateConfig()
+  const el = document.getElementById('cfgIssues')
+  if (issues.length) { el.style.display = 'block'; el.textContent = '⚠️ ' + issues.join('；') } else { el.style.display = 'none' }
+  renderProductionUI()
+}
+
+// ===== 产物 / 贸易策略配置（存 localStorage，与排班联动）=====
+function getMfCats() { const saved = JSON.parse(localStorage.getItem('ak_mf_config') || 'null'); return saved || ['赤金', '作战记录', '源石碎片', '通用', '赤金'] }
+function getTradeStrategies() { return JSON.parse(localStorage.getItem('ak_trade_config') || 'null') || [] }
+function setMfCat(i, cat) { const c = getMfCats(); c[i] = cat; localStorage.setItem('ak_mf_config', JSON.stringify(c)); renderProductionUI() }
+function setTradeStrategy(i, s) { const c = getTradeStrategies(); c[i] = s; localStorage.setItem('ak_trade_config', JSON.stringify(c)); renderProductionUI() }
+function renderProductionUI() {
+  const box = document.getElementById('cfgProduction')
+  if (!box) return
+  const g = gridCounts()
+  let h = ''
+  const mfCfg = getMfCats()
+  for (let i = 0; i < g.MANUFACTURE; i++) {
+    h += '<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:5px"><span style="font-size:11px;color:#5ddf5d;width:62px">制造站' + (i + 1) + '</span>'
+    for (const cat of MF_CATS) {
+      const on = (mfCfg[i] || '通用') === cat
+      h += '<span onclick="setMfCat(' + i + ',\'' + cat + '\')" style="cursor:pointer;padding:2px 8px;border-radius:4px;font-size:11px;background:' + (on ? 'rgba(93,221,93,.2)' : 'rgba(15,22,41,.6)') + ';border:1px solid ' + (on ? '#5ddf5d' : 'rgba(42,58,94,.3)') + ';color:' + (on ? '#5ddf5d' : '#888') + '">' + cat + '</span>'
+    }
+    h += '</div>'
+  }
+  const trCfg = getTradeStrategies()
+  for (let i = 0; i < g.TRADING; i++) {
+    h += '<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:5px"><span style="font-size:11px;color:#6bb5ff;width:62px">贸易站' + (i + 1) + '</span>'
+    for (const s of ['龙门商法', '开采协力']) {
+      const on = (trCfg[i] || '龙门商法') === s
+      h += '<span onclick="setTradeStrategy(' + i + ',\'' + s + '\')" style="cursor:pointer;padding:2px 8px;border-radius:4px;font-size:11px;background:' + (on ? 'rgba(107,181,255,.2)' : 'rgba(15,22,41,.6)') + ';border:1px solid ' + (on ? '#6bb5ff' : 'rgba(42,58,94,.3)') + ';color:' + (on ? '#6bb5ff' : '#888') + '">' + s + '</span>'
+    }
+    h += '</div>'
+  }
+  if (g.MANUFACTURE === 0 && g.TRADING === 0) h = '<div style="font-size:11px;color:#666">（左侧未配置制造站/贸易站）</div>'
+  box.innerHTML = h
+}
+
+// ===== 排班算法 v4（自定义基建配置）=====
+let ctrlOps = {}
+function classifyMF(d) { if (!d) return '通用'; if (d.includes('源石')) return '源石碎片'; if (d.includes('贵金属') || d.includes('赤金')) return '赤金'; if (d.includes('作战记录')) return '作战记录'; if (d.includes('技巧概要')) return '技巧概要'; return '通用' }
+let baseSkillsCache = null
+async function loadBaseSkills() { if (baseSkillsCache) return baseSkillsCache; const r = await fetch('data/baseSkills.json'); baseSkillsCache = await r.json(); return baseSkillsCache }
+function analyzeSkills(chars, skills) { return (chars || []).map(c => { const sd = skills[c.charId]; if (!sd) return { ...c, baseSkills: {} }; const fac = {}, moods = [], combos = [], partners = []; let mfCat = null
+  for (const [f, info] of Object.entries(sd)) { if (['name', 'rarity'].includes(f)) continue; const d = info.desc || ''; fac[f] = { type: info.type || '', value: info.value || 0, desc: d }
+  if (d.includes('心情每小时消耗')) { const m = d.match(/心情每小时消耗([+-])([\d.]+)/); if (m) moods.push({ facility: f, cost: parseFloat(m[1] + m[2]) }) }
+  if (f !== 'dormitory' && (d.includes('若') || d.includes('当') || d.includes('如果') || d.includes('同个') || d.includes('额外'))) { combos.push({ facility: f, desc: d.slice(0, 80) })
+    const ms = d.matchAll(/([^\s<]+)(?:进驻|在|与|和|入驻)/g); for (const m of ms) if (m[1].length > 1) partners.push(m[1]) }
+  if (f === 'manufacture') mfCat = classifyMF(d) }
+  return { ...c, rarity: sd.rarity || c.rarity || 1, baseSkills: fac, mfCat, moods, combos, partners: [...new Set(partners)] } }) }
+function pickMF(type, pool, count, cat, used) { const a = pool.filter(o => o.baseSkills && o.baseSkills[type] && o.mfCat === cat && !used.has(o.charId)).sort((a, b) => b.baseSkills[type].value - a.baseSkills[type].value)
+  const b = pool.filter(o => o.baseSkills && o.baseSkills[type] && o.mfCat !== cat && !used.has(o.charId)).sort((a, b) => b.baseSkills[type].value - a.baseSkills[type].value)
+  const r = []; let e = 0
+  for (const l of [a, b]) { for (const o of l) { if (r.length >= count) break; used.add(o.charId); r.push({ charId: o.charId, name: o.name, displayName: o.displayName, rarity: o.rarity, skill: o.baseSkills[type], moodCost: o.moods?.find(m => m.facility === type) }); e += o.baseSkills[type]?.value || 0 } }
+  for (const o of pool) { if (r.length >= count) break; if (used.has(o.charId)) continue; used.add(o.charId); r.push({ charId: o.charId, name: o.name, displayName: o.displayName, rarity: o.rarity, skill: { type: 'general', value: 0, desc: '通用' } }) }
+  while (r.length < count) r.push({ charId: 'empty_' + r.length, name: '空位', rarity: 1, skill: { type: 'empty', value: 0, desc: '待分配' } }); return { assigned: r, efficiency: e } }
+function pickFac(type, pool, count, used) { const u = used || new Set(); if (type === 'control') { const sorted = [...pool].sort((a, b) => { const aS = (ctrlOps[a.charId]?.score || 0), bS = (ctrlOps[b.charId]?.score || 0); if (aS !== bS) return bS - aS
+  const aC = a.combos?.length || 0, bC = b.combos?.length || 0; if (aC !== bC) return bC - aC; return b.rarity - a.rarity }); return pickGeneric(sorted, count, u) }
+  const a = pool.filter(o => o.baseSkills && o.baseSkills[type] && !u.has(o.charId)).sort((a, b) => b.baseSkills[type].value - a.baseSkills[type].value)
+  const r = []; let e = 0
+  for (const o of a) { if (r.length >= count) break; if (u.has(o.charId)) continue; u.add(o.charId); r.push({ charId: o.charId, name: o.name, displayName: o.displayName, rarity: o.rarity, skill: o.baseSkills[type], moodCost: o.moods?.find(m => m.facility === type) }); e += o.baseSkills[type]?.value || 0 }
+  for (const o of pool) { if (r.length >= count) break; if (u.has(o.charId)) continue; u.add(o.charId); r.push({ charId: o.charId, name: o.name, displayName: o.displayName, rarity: o.rarity, skill: { type: 'general', value: 0, desc: '通用' }, moodCost: null }) }
+  while (r.length < count) r.push({ charId: 'empty_' + r.length, name: '空位', rarity: 1, skill: { type: 'empty', value: 0, desc: '待分配' }, moodCost: null }); return { assigned: r, efficiency: e } }
+function pickGeneric(pool, count, used) { const u = used || new Set(), r = []; let e = 0
+  for (const o of pool) { if (r.length >= count) break; if (u.has(o.charId)) continue; u.add(o.charId); r.push({ charId: o.charId, name: o.name, displayName: o.displayName, rarity: o.rarity, skill: { type: 'general', value: 0, desc: '通用' }, moodCost: null }) }
+  while (r.length < count) r.push({ charId: 'empty_' + r.length, name: '空位', rarity: 1, skill: { type: 'empty', value: 0, desc: '待分配' }, moodCost: null }); return { assigned: r, efficiency: e } }
+
+function buildStations() {
+  const stations = []
+  stations.push({ id: 'CONTROL', name: '控制中枢', type: 'control', slots: slotsOf('CONTROL'), mood: 0.5 })
+  let mi = 0, ti = 0, pi = 0
+  const cats = getMfCats()
+  const trStrat = getTradeStrategies()
+  for (const t of baseConfig.grid) {
+    if (t === 'MANUFACTURE') { const cat = cats[mi] || '通用'; stations.push({ id: 'MF' + (mi + 1), name: '制造站' + (mi + 1) + '(' + cat + ')', type: 'manufacture', slots: slotsOf('MANUFACTURE'), cat, mood: 0.75 }); mi++ }
+    else if (t === 'TRADING') { const strat = trStrat[ti] || '龙门商法'; stations.push({ id: 'TR' + (ti + 1), name: '贸易站' + (ti + 1) + '(' + strat + ')', type: 'trading', slots: slotsOf('TRADING'), mood: 0.75 }); ti++ }
+    else { stations.push({ id: 'PW' + (pi + 1), name: '发电站' + (pi + 1), type: 'power', slots: 1, mood: 0.75 }); pi++ }
+  }
+  stations.push({ id: 'MEETING', name: '会客室', type: 'meeting', slots: slotsOf('MEETING'), mood: 0.5 })
+  stations.push({ id: 'HIRE', name: '办公室', type: 'hire', slots: slotsOf('HIRE'), mood: 0.5 })
+  stations.push({ id: 'TRAINING', name: '训练室', type: 'training', slots: slotsOf('TRAINING'), mood: 0.3 })
+  stations.push({ id: 'WORKSHOP', name: '加工站', type: 'workshop', slots: slotsOf('WORKSHOP'), mood: 0 })
+  for (let d = 1; d <= baseConfig.dorms; d++) stations.push({ id: 'DORM' + d, name: '宿舍' + d, type: 'dormitory', slots: 5, mood: 0 })
+  if (baseConfig.useAssistant) stations.push({ id: 'ASSIST', name: '基建副手', type: 'assistant', slots: assistantCount(), mood: 0 })
+  return stations
+}
+// 贸易站联动配对：把搭档换到同一站（放到空位/通用位），使组合效果生效
+function pairTradingPartners(tradings) {
+  if (tradings.length < 2) return
+  for (let a = 0; a < tradings.length; a++) { for (let b = a + 1; b < tradings.length; b++) {
+    for (const oa of tradings[a].ops) { for (const ob of tradings[b].ops) {
+      if (oa.partners?.includes(ob.name) || ob.partners?.includes(oa.name)) {
+        const idxB = tradings[b].ops.indexOf(ob)
+        const idxA = tradings[a].ops.findIndex(o => o.skill?.type === 'general' || o.skill?.type === 'empty')
+        if (idxA >= 0 && idxB >= 0) { const tmp = tradings[a].ops[idxA]; tradings[a].ops[idxA] = tradings[b].ops[idxB]; tradings[b].ops[idxB] = tmp }
+    } } } } }
+}
+function generateSchedule(ud, skills) {
+  const issues = validateConfig()
+  if (issues.length) throw new Error('基建配置有误：' + issues.join('；'))
+  const chars = analyzeSkills(ud.chars || [], skills)
+  const stations = buildStations()
+  const scs = []
+  for (let s = 0; s < 2; s++) {
+    const pool = [...chars]
+    const off = Math.floor(pool.length / 2) * s
+    const rot = [...pool.slice(off), ...pool.slice(0, off)]
+    const used = new Set()
+    const shift = { stations: [], totalEff: 0, moodCost: 0, ctrlBonus: 0 }
+    for (const st of stations) {
+      if (st.type === 'dormitory') {
+        const unassigned = rot.filter(o => !used.has(o.charId))
+        const ops = []
+        for (let i = 0; i < st.slots && unassigned.length; i++) { const o = unassigned.shift(); used.add(o.charId); ops.push({ charId: o.charId, name: o.name, displayName: o.displayName, rarity: o.rarity, skill: { type: 'rest', value: 0, desc: '休息恢复心情' } }) }
+        while (ops.length < st.slots) ops.push({ charId: 'empty_' + ops.length, name: '空位', rarity: 1, skill: { type: 'empty', value: 0, desc: '待分配' } })
+        shift.stations.push({ ...st, ops })
+      } else if (st.type === 'assistant') {
+        const r = pickGeneric(chars.filter(o => !used.has(o.charId)), st.slots)
+        shift.stations.push({ ...st, ops: r.assigned })
+      } else if (st.type === 'manufacture') {
+        const r = pickMF('manufacture', rot, st.slots, st.cat, used)
+        shift.stations.push({ ...st, ops: r.assigned, eff: r.efficiency })
+        shift.totalEff += r.efficiency
+      } else if (st.type === 'control') {
+        const r = pickFac('control', chars, st.slots, used)
+        shift.stations.push({ ...st, ops: r.assigned, eff: 0 })
+      } else {
+        const r = pickFac(st.type, rot, st.slots, used)
+        shift.stations.push({ ...st, ops: r.assigned, eff: r.efficiency })
+        shift.totalEff += r.efficiency
+      }
+    }
+    // 控制中枢全局加成
+    const ctrlSt = shift.stations.find(st => st.type === 'control')
+    let ctrlBonus = 0
+    for (const o of (ctrlSt?.ops || [])) { const cb = ctrlOps[o.charId]; if (!cb) continue
+      for (const bf of cb.buffs || []) { const d = bf.desc || ''
+        if (d.includes('所有制造站生产力')) { const m = d.match(/[\d.]+(?=%)/); if (m) ctrlBonus += parseFloat(m[0]) }
+        if (d.includes('所有贸易站订单效率')) { const m = d.match(/[\d.]+(?=%)/); if (m) ctrlBonus += parseFloat(m[0]) }
+      } }
+    shift.ctrlBonus = ctrlBonus
+    pairTradingPartners(shift.stations.filter(st => st.type === 'trading'))
+    let tm = 0
+    for (const st of shift.stations) for (const o of (st.ops || [])) if (o.moodCost) tm += o.moodCost.cost
+    shift.moodCost = tm
+    scs.push(shift)
+  }
+  return { schedules: scs, totalEfficiency: scs.reduce((s, x) => s + x.totalEff, 0) }
+}
+async function runSchedule() { const btn = document.getElementById('scheduleBtn'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>计算中...'
+  try { const raw = localStorage.getItem('ak_user_data'); if (!raw) { alert('请先获取干员数据'); return }
+    loadConfig()
+    const ud = JSON.parse(raw), skills = await loadBaseSkills(), ctrlResp = await fetch('data/ctrl_skills.json'); ctrlOps = await ctrlResp.json(), result = generateSchedule(ud, skills)
+    let h = '<div class="shift-tabs">'
+    result.schedules.forEach((sh, i) => { h += '<div class="shift-tab ' + (i === 0 ? 'active' : '') + '" onclick="showShift(this,&#39;shift' + (i + 1) + '&#39;)">' + ['A班', 'B班'][i] + '</div>' })
+    h += '</div>'
+    result.schedules.forEach((sh, i) => {
+      h += '<div id="shift' + (i + 1) + '" style="display:' + (i === 0 ? 'block' : 'none') + '">'
+      for (const st of sh.stations) {
+        const bonus = (st.type === 'manufacture' || st.type === 'trading') && sh.ctrlBonus > 0 ? '<span style="color:#f5c518;font-size:10px">+中枢' + sh.ctrlBonus + '%</span>' : ''
+        const eff = st.eff > 0 ? '<span style="float:right;color:#5ddf5d;font-size:11px">效率 ' + st.eff.toFixed(1) + '</span>' : ''
+        h += '<div class="facility-card"><h4>' + st.name + eff + bonus + '</h4>'
+        for (const o of (st.ops || [])) {
+          const cls = o.skill?.value > 0 ? 'eff-good' : 'eff'
+          const mood = o.moodCost ? ' 💚' + (o.moodCost.cost > 0 ? '+' : '') + o.moodCost.cost : ''
+          const desc = st.type === 'dormitory' ? '' : (o.skill?.desc || '')
+          h += '<div class="slot"><span class="name">' + (o.displayName || o.name) + '</span><span class="' + cls + '">' + desc + mood + '</span></div>'
+        }
+        h += '</div>'
+      }
+      h += '<div class="eff-total">' + ['A', 'B'][i] + '班 总效率: ' + sh.totalEff.toFixed(1) + ' | 💚心情消耗: ' + sh.moodCost.toFixed(2) + '/h</div></div>'
+    })
+    h += '<div class="eff-total" style="margin-top:4px">两班总效率: ' + result.totalEfficiency.toFixed(1) + '</div>'
+    document.getElementById('scheduleResult').innerHTML = h; document.getElementById('scheduleCard').classList.add('show')
+  } catch (e) { alert('排班失败: ' + e.message); console.error(e) } finally { btn.disabled = false; btn.innerHTML = '⚡ 生成排班表' }
+}
+
+// ===== 制造站产物配置（数组长度与制造站数量同步）=====
+const MF_CATS = ['赤金', '作战记录', '源石碎片', '技巧概要', '仓库', '通用']
+function refreshMfConfig(n) { let c = JSON.parse(localStorage.getItem('ak_mf_config') || 'null'); if (!c || c.length !== n) { c = []; const d = ['赤金', '作战记录', '源石碎片', '通用', '赤金']; for (let i = 0; i < n; i++) c.push(d[i % d.length] || '通用'); localStorage.setItem('ak_mf_config', JSON.stringify(c)) } renderProductionUI() }
+
+document.getElementById('loginBtn').addEventListener('click', login)
+document.getElementById('scheduleBtn').addEventListener('click', runSchedule)
+document.getElementById('credInput').addEventListener('keydown', e => { if (e.key === 'Enter') login() })
+document.getElementById('cfgControlLevel').addEventListener('change', e => { baseConfig.controlLevel = parseInt(e.target.value); persistConfig() })
+document.getElementById('cfgDorms').addEventListener('change', e => { baseConfig.dorms = parseInt(e.target.value); persistConfig() })
+document.getElementById('cfgAssistant').addEventListener('change', e => { baseConfig.useAssistant = e.target.checked; persistConfig() })
+document.getElementById('cfgSyncBtn').addEventListener('click', syncConfigFromUserData)
+loadConfig()
+renderConfigUI()
+</script>
+</body>
+</html>

@@ -24,13 +24,17 @@
       <div class="ak-card" style="text-align:center">
         <div style="font-size:32px; margin-bottom:8px">⚙️</div>
         <h3 style="font-size:15px; margin-bottom:6px">智能排班算法</h3>
-        <p style="font-size:13px; color:var(--ak-text-dim)">基于干员技能组合优化，自动生成A/B/C轮换方案</p>
+        <p style="font-size:13px; color:var(--ak-text-dim)">按你的实际基建配置生成 A/B 两班，覆盖全设施并计算中枢加成</p>
       </div>
       <div class="ak-card" style="text-align:center">
         <div style="font-size:32px; margin-bottom:8px">🔒</div>
         <h3 style="font-size:15px; margin-bottom:6px">数据本地存储</h3>
         <p style="font-size:13px; color:var(--ak-text-dim)">所有数据存于浏览器，不上传任何服务器</p>
       </div>
+    </div>
+
+    <div style="text-align:center; margin-top:16px; font-size:12px">
+      <a href="./legacy.html" style="color:var(--ak-text-dim)">旧版单文件入口</a>
     </div>
   </div>
 </template>
