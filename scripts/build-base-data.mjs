@@ -109,6 +109,44 @@ function isConditional(desc) {
   return /当|若|每有|每名|每点|如果|存在|满足|心情.{0,6}以下|达到|配合|一起进驻|暖机|累积/.test(s)
 }
 
+function effectsOf(skill, rawDesc) {
+  const desc = clean(rawDesc)
+  const effects = []
+  if (Number(skill.percent || 0) > 0) {
+    effects.push({ type: 'efficiency', target: skill.room === 'DORMITORY' ? 'dormitory' : 'room', value: Number(skill.percent), unit: 'percent' })
+  }
+  if (Number(skill.orderLimit || 0) > 0) {
+    effects.push({ type: 'orderLimit', target: 'room', value: Number(skill.orderLimit), unit: 'orders' })
+  }
+  if (Number(skill.capacity || 0) > 0) {
+    effects.push({ type: 'capacity', target: 'room', value: Number(skill.capacity), unit: 'slots' })
+  }
+  const mood = Number(skill.mood || 0)
+  if (mood > 0) {
+    const type = /恢复/.test(desc) ? 'moodRecovery' : /消耗/.test(desc) ? 'moodCost' : 'mood'
+    const effect = {
+      type,
+      target: /控制中枢内/.test(desc) ? 'control'
+        : /宿舍内/.test(desc) ? 'dormitory'
+          : /其他设施/.test(desc) ? 'otherFacilities'
+            : 'room',
+      value: Math.abs(mood),
+      unit: 'perHour',
+    }
+    const faction = rawDesc.match(/每个<(?:\$|@)?cc\.g\.([a-z0-9_]+)>/)
+    if (faction) {
+      effect.per = 'factionMember'
+      effect.factionId = faction[1]
+    }
+    if (skill.conditional) effect.conditional = true
+    effects.push(effect)
+  }
+  if (Number(skill.flat || 0) > 0 && !mood) {
+    effects.push({ type: 'flat', target: 'room', value: Number(skill.flat), unit: 'flat' })
+  }
+  return effects
+}
+
 function normalizeRoom(room) { return room || null }
 
 const building = await loadLocalOrFetch('building_data.json', BUILDING_URL)
@@ -154,7 +192,9 @@ for (const [charId, entry] of Object.entries(building.chars || {})) {
         capacity: capacityOf(desc),
         stacking: desc.includes('同种效果取最高') ? 'max' : 'stack',
         conditional: isConditional(desc),
+        effects: [],
       })
+      skills[skills.length - 1].effects = effectsOf(skills[skills.length - 1], rawDesc)
       skillCount += 1
     }
   }
@@ -169,6 +209,7 @@ for (const [charId, entry] of Object.entries(building.chars || {})) {
       subProfession: info.subProfessionId || '',
       nation: info.nationId || '',
       group: info.groupId || '',
+      faction: { nation: info.nationId || '', group: info.groupId || '' },
       skills,
     }
   }
@@ -231,7 +272,7 @@ const layouts = [
 mkdirSync(OUT, { recursive: true })
 mkdirSync(join(OUT, '..'), { recursive: true })
 writeFileSync(join(OUT, 'operators.json'), JSON.stringify({
-  meta: { version: '2026-10-20', source: 'Kengxxiao/ArknightsGameData zh_CN', characters: Object.keys(characters).length, skills: skillCount },
+  meta: { version: '2026-10-20', effectSchemaVersion: 1, source: 'Kengxxiao/ArknightsGameData zh_CN', characters: Object.keys(characters).length, skills: skillCount },
   characters,
 }, null, 0))
 writeFileSync(join(OUT, 'facilities.json'), JSON.stringify({
