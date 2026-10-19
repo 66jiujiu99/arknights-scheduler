@@ -224,8 +224,7 @@ export function generate() {
     strategies: store.strategies,
     recipes: store.recipes,
   })
-  const recommended = store.result.candidates.findIndex((c) => c.profile === '推荐')
-  store.selected = recommended >= 0 ? recommended : 0
+  store.selected = 0
   return store.result
 }
 

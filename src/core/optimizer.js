@@ -764,13 +764,20 @@ function recommendationHint(balance, target) {
   const gold = balance.gold
   const shard = balance.shard
   const points = []
-  if (gold.demand > 0 && gold.supply < gold.demand) points.push('赤金制造')
-  if (shard.demand > 0 && shard.supply < shard.demand) points.push('源石碎片制造')
-  if (gold.supply > gold.demand) points.push('龙门币贸易产能')
-  if (shard.supply > shard.demand) points.push('合成玉贸易产能')
+  const includeGold = target !== 'orundum'
+  const includeShard = target !== 'lmd'
+  const goldMfgShort = gold.demand > 0 && gold.supply < gold.demand
+  const shardMfgShort = shard.demand > 0 && shard.supply < shard.demand
+  const goldTradeShort = gold.supply > gold.demand
+  const shardTradeShort = shard.supply > shard.demand
+  if (includeGold && goldMfgShort) points.push('赤金制造')
+  if (includeShard && shardMfgShort) points.push('源石碎片制造')
+  if (includeGold && goldTradeShort) points.push('龙门币贸易产能')
+  if (includeShard && shardTradeShort) points.push('合成玉贸易产能')
   if (!points.length) return ''
   const targetText = target === 'lmd' ? '（主攻龙门币）' : target === 'orundum' ? '（主攻合成玉）' : '（均衡）'
-  return '当前瓶颈' + targetText + '：' + points.join(' / ') + ' 不足，练度建议优先补对应设施。'
+  const mfg = points.some((x) => x.includes('制造'))
+  return '当前瓶颈' + targetText + '：' + points.join(' / ') + ' 不足，优先补' + (mfg ? '制造/中枢/发电' : '贸易/中枢/发电') + '，' + (mfg ? '暂不推荐贸易。' : '制造暂不作为首选。')
 }
 
 function buildRecommendations(player, data, context = {}) {
@@ -968,7 +975,10 @@ export function generatePlans(player, base, data, options) {
     }
   }
   const target = opts.target || 'balanced'
-  attachTargetScores(picked, target)
+  if (opts.target) {
+    attachTargetScores(picked, target)
+    picked.sort((a, b) => b.score.targetScore - a.score.targetScore)
+  }
   const primary = picked[0]
   const recommendationContext = opts.target
     ? { target: opts.target, balance: primary?.score?.balance }
