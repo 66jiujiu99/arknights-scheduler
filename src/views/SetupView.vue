@@ -194,13 +194,16 @@ const powerPct = computed(() => {
 const effectiveOps = computed(() => store.options.mode === 'oneclick' ? Math.min(3, store.options.operationsPerDay) : store.options.operationsPerDay)
 const hoursPerShift = computed(() => Math.round((24 / effectiveOps.value) * 10) / 10)
 const weightPct = computed(() => {
-  const w = store.options.weights
-  const total = Number(w.lmd) + Number(w.exp) + Number(w.orundum) + Number(w.trust) || 1
+  const w = store.options.weights || {}
+  const num = (v) => (Number.isFinite(Number(v)) ? Math.max(0, Number(v)) : 0)
+  const values = { lmd: num(w.lmd), exp: num(w.exp), orundum: num(w.orundum), trust: num(w.trust) }
+  const total = values.lmd + values.exp + values.orundum + values.trust
+  if (!total) return { lmd: 0, exp: 0, orundum: 0, trust: 0 }
   return {
-    lmd: Math.round(Number(w.lmd) / total * 100),
-    exp: Math.round(Number(w.exp) / total * 100),
-    orundum: Math.round(Number(w.orundum) / total * 100),
-    trust: Math.round(Number(w.trust) / total * 100),
+    lmd: Math.round(values.lmd / total * 100),
+    exp: Math.round(values.exp / total * 100),
+    orundum: Math.round(values.orundum / total * 100),
+    trust: Math.round(values.trust / total * 100),
   }
 })
 
@@ -212,7 +215,7 @@ function setMode(mode) {
   updateOptions({ mode, operationsPerDay: mode === 'oneclick' ? Math.min(3, store.options.operationsPerDay || 2) : Math.max(3, store.options.operationsPerDay || 3) })
 }
 function setOps(n) { updateOptions({ operationsPerDay: n }) }
-function setWeight(key, value) { updateOptions({ weights: { [key]: Number(value) } }) }
+function setWeight(key, value) { updateOptions({ weights: { [key]: Math.min(100, Math.max(0, Number(value) || 0)) } }) }
 
 function doGenerate() {
   localError.value = ''
