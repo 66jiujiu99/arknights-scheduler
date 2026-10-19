@@ -502,3 +502,27 @@ test('mixed bottleneck keeps both production and trade recommendations', () => {
   assert.ok(result.meta.recommendationHint.includes('赤金制造'))
   assert.ok(result.meta.recommendationHint.includes('合成玉贸易'))
 })
+
+
+test('recommendations prefer low promotion cost for the same skill gain', () => {
+  const characters = {
+    cheap: {
+      id: 'cheap', name: '低星干员', rarity: 3, profession: '近卫',
+      evolveCosts: [null, [{ id: 'm1', count: 2, type: 'MATERIAL' }]],
+      skills: [mkSkill('MANUFACTURE', '贵金属', 30, { phase: 1, level: 1 })],
+    },
+    expensive: {
+      id: 'expensive', name: '高星干员', rarity: 6, profession: '近卫',
+      evolveCosts: [null, [{ id: 'm2', count: 5, type: 'MATERIAL' }], [{ id: 'm3', count: 20, type: 'MATERIAL' }]],
+      skills: [mkSkill('MANUFACTURE', '贵金属', 30, { phase: 2, level: 1 })],
+    },
+  }
+  const player = mkPlayer([{ id: 'cheap', elite: 0, level: 1 }, { id: 'expensive', elite: 0, level: 1 }])
+  const result = generate(player, mkData(characters), { weights: { lmd: 100, exp: 0, orundum: 0, trust: 0 } })
+  const recs = result.meta.recommendations
+  const cheap = recs.find((r) => r.charId === 'cheap')
+  const expensive = recs.find((r) => r.charId === 'expensive')
+  assert.ok(cheap && expensive)
+  assert.ok(cheap.efficiency > expensive.efficiency)
+  assert.ok(cheap.cost < expensive.cost)
+})

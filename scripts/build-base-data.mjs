@@ -164,6 +164,7 @@ for (const [charId, entry] of Object.entries(building.chars || {})) {
       id: charId,
       name: info.name || charId,
       rarity: RARITY[info.rarity] || 0,
+      evolveCosts: (info.phases || []).map((p) => p.evolveCost || null),
       profession: PROF_CN[info.profession] || info.profession || '',
       subProfession: info.subProfessionId || '',
       nation: info.nationId || '',
@@ -230,7 +231,7 @@ const layouts = [
 mkdirSync(OUT, { recursive: true })
 mkdirSync(join(OUT, '..'), { recursive: true })
 writeFileSync(join(OUT, 'operators.json'), JSON.stringify({
-  meta: { version: '2026-10-16', source: 'Kengxxiao/ArknightsGameData zh_CN', characters: Object.keys(characters).length, skills: skillCount },
+  meta: { version: '2026-10-20', source: 'Kengxxiao/ArknightsGameData zh_CN', characters: Object.keys(characters).length, skills: skillCount },
   characters,
 }, null, 0))
 writeFileSync(join(OUT, 'facilities.json'), JSON.stringify({
