@@ -222,6 +222,7 @@ code {
 .ak-manual { margin-top: 22px; border-top: 1px solid var(--rl-faint); padding-top: 18px; }
 .ak-field-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .ak-field { display: flex; flex-direction: column; gap: 6px; font-size: 10.5px; color: var(--rl-mute); }
+.ak-field input[type="number"] { background: #f4f1ec; border: 1px solid var(--rl-faint); color: var(--rl-ink); padding: 8px 10px; font-family: var(--rl-font-mono); font-size: 11px; outline: none; width: 100%; }
 .ak-field select, .ak-option select, .ak-station select { background: #f4f1ec; border: 1px solid var(--rl-faint); color: var(--rl-ink); padding: 8px 10px; font-family: var(--rl-font-mono); font-size: 11px; outline: none; }
 .ak-field select:focus, .ak-option select:focus, .ak-station select:focus { border-color: var(--rl-ink); }
 .ak-field-check { flex-direction: row; align-items: center; justify-content: space-between; }
@@ -246,9 +247,10 @@ code {
 .ak-switch { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: var(--rl-mute); cursor: pointer; }
 .ak-switch input { accent-color: var(--rl-orange); width: 15px; height: 15px; }
 .ak-station-list { display: grid; gap: 7px; }
-.ak-station { display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 1px solid var(--rl-faint); background: #f4f1ec; padding: 7px 9px; font-size: 10.5px; color: var(--rl-ink); }
+.ak-station { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 7px 8px; border: 1px solid var(--rl-faint); background: #f4f1ec; padding: 7px 9px; font-size: 10.5px; color: var(--rl-ink); }
 .ak-station small { color: var(--rl-mute); font-family: var(--rl-font-mono); font-size: 9px; }
 .ak-station select { min-width: 138px; padding: 5px 7px; }
+.ak-station-recipe { flex-basis: 100%; min-width: 0 !important; border-top: 1px dashed var(--rl-faint) !important; margin-top: 3px; }
 
 /* ── plan / candidates ───────────────────────────────────── */
 .ak-candidate-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
@@ -337,3 +339,11 @@ code {
   .ak-station { flex-direction: column; align-items: stretch; }
   .ak-station select { min-width: 0; }
 }
+
+/* 产销平衡 */
+.ak-balance { padding: 9px 0; border-bottom: 1px dashed var(--rl-faint); }
+.ak-balance:last-of-type { border-bottom: none; }
+.ak-balance-head { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--rl-ink); margin-bottom: 5px; }
+.ak-balance-head b { font-size: 9px; font-family: var(--rl-font-mono); color: var(--rl-orange-deep); font-weight: 400; text-align: right; }
+.ak-balance-nums, .ak-balance-eff { font-family: var(--rl-font-mono); font-size: 9.5px; color: var(--rl-mute); line-height: 1.75; }
+.ak-balance-eff { color: var(--rl-ink); }

@@ -12,6 +12,28 @@ const MF_RATE = {
   '源石碎片': 1,
 }
 const MF_LABEL = { '赤金': '赤金', '作战记录': '作战记录', '源石碎片': '源石碎片' }
+
+// 游戏数据：源石碎片配方 13 = 固源岩×2 + 1600 龙门币；配方 14 = 装置×1 + 1000 龙门币。
+// 1-7 数据来自一图流（2026-10-20）：每理智 1.09 合成玉，搓 1 抽消耗 9.54 万龙门币。
+const SHARD_RECIPES = {
+  '固源岩': { key: '固源岩', materialName: '固源岩', perShard: 2, lmd: 1600, apPerShard: 10 / 1.09 },
+  '装置': { key: '装置', materialName: '装置', perShard: 1, lmd: 1000, apPerShard: null },
+}
+const ORUNDUM_1_7 = { orundumPerAp: 1.09, lmdPerPull: 95400, stage: '1-7', source: '一图流 2026-10-20' }
+
+function makeBalance(label, supply, demand) {
+  const s = Math.max(0, Number(supply) || 0)
+  const d = Math.max(0, Number(demand) || 0)
+  const ratio = d > 0 ? Math.min(1, s / d) : 1
+  const mfEffective = s > 0 ? Math.min(1, d / s) : 0
+  const trEffective = d > 0 ? Math.min(1, s / d) : 0
+  let limiting = '平衡'
+  if (s <= 0 && d > 0) limiting = '制造不足'
+  else if (d <= 0 && s > 0) limiting = '无贸易需求'
+  else if (s < d) limiting = '制造'
+  else if (s > d) limiting = '贸易'
+  return { label, supply: s, demand: d, ratio, mfEffective, trEffective, limiting }
+}
 // Daily output scales: LMD ~ 30k, EXP ~ 24k, Orundum ~ 800, Trust ~ 2500.
 // Normalising keeps the user's 0-100 weights comparable across resources.
 const SCORE_SCALE = { lmd: 30000, exp: 24000, orundum: 800, trust: 4000 }
@@ -238,6 +260,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       roomId: room.id,
       level: room.level,
       product,
+      recipe: product === '源石碎片' ? (mix.shardRecipes?.[index] || '固源岩') : null,
       ops: picks.map((p) => {
         const skill = matchingSkill(p, 'MANUFACTURE', product)
         return { charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, skill }
@@ -354,6 +377,17 @@ function scoreQueues(queues, base, data, opts, mix) {
   let lmd = 0
   let exp = 0
   let orundum = 0
+  let goldSupplyDay = 0
+  let goldDemandDay = 0
+  let shardSupplyDay = 0
+  let shardDemandDay = 0
+  let shardProduced = 0
+  let shardConsumed = 0
+  let shardGuiyan = 0
+  let shardDevice = 0
+  let shardLmdCost = 0
+  let shardApCost = 0
+  const shardByRecipe = { '固源岩': 0, '装置': 0 }
   const moodMap = new Map()
   const dormRate = base.dorms && base.dorms.length
     ? base.dorms.reduce((sum, d) => sum + 1.5 + 0.1 * Number(d.level || 1) + 0.0004 * Number(d.comfort || 0), 0) / base.dorms.length
@@ -378,9 +412,30 @@ function scoreQueues(queues, base, data, opts, mix) {
       const r = rateForManufacture(room.product, room.ops, control, combo.bonus, room.level)
       room.efficiency = r.efficiency
       room.rate = r.rate
-      if (room.product === '赤金') goldSupply += r.rate
-      else if (room.product === '源石碎片') shardSupply += r.rate
-      else exp += (r.exp || 0) * q.hours
+      if (room.product === '赤金') {
+        goldSupply += r.rate
+        goldSupplyDay += r.rate * q.hours
+      } else if (room.product === '源石碎片') {
+        shardSupply += r.rate
+        shardSupplyDay += r.rate * q.hours
+        const recipe = SHARD_RECIPES[room.recipe] || SHARD_RECIPES['固源岩']
+        const recipeLmd = recipe.key === '固源岩'
+          ? Number(opts.shardCosts?.guiyanLmd ?? recipe.lmd)
+          : Number(opts.shardCosts?.deviceLmd ?? recipe.lmd)
+        const shards = r.rate * q.hours
+        shardProduced += shards
+        shardByRecipe[recipe.key] += shards
+        if (recipe.key === '固源岩') shardGuiyan += shards * recipe.perShard
+        else shardDevice += shards * recipe.perShard
+        shardLmdCost += shards * recipeLmd
+        shardApCost += shards * (recipe.apPerShard || 0)
+        room.shardRecipe = recipe.key
+        room.materialPerHour = r.rate * recipe.perShard
+        room.lmdCostPerHour = r.rate * recipeLmd
+        room.apPerHour = r.rate * (recipe.apPerShard || 0)
+      } else {
+        exp += (r.exp || 0) * q.hours
+      }
     }
     for (const room of a.TRADING || []) {
       const combo = comboBonus({ TRADING: room.ops }, 'TRADING', data)
@@ -395,6 +450,9 @@ function scoreQueues(queues, base, data, opts, mix) {
     const shardRatio = shardDemand > 0 ? Math.min(1, shardSupply / shardDemand) : 1
     lmd += lmdRate * goldRatio * q.hours
     orundum += orundumRate * shardRatio * q.hours
+    goldDemandDay += goldDemand * q.hours
+    shardDemandDay += shardDemand * q.hours
+    shardConsumed += Math.min(shardSupply, shardDemand) * q.hours
 
     // Mood / efficiency per facility, also used by the plan UI.
     const controlOpsCount = (a.CONTROL || []).length
@@ -508,12 +566,51 @@ function scoreQueues(queues, base, data, opts, mix) {
   const finalLmd = lmd * droneFactor
   const finalExp = exp * droneFactor
   const finalOrundum = orundum * droneFactor
+  const finalLmdCost = shardLmdCost * droneFactor
+  const netLmd = finalLmd - finalLmdCost
+  const finalShardProduced = shardProduced * droneFactor
+  const finalShardConsumed = Math.min(finalShardProduced, shardDemandDay)
+  const goldBalance = makeBalance('赤金', goldSupplyDay * droneFactor, goldDemandDay)
+  const shardBalance = makeBalance('源石碎片', shardSupplyDay * droneFactor, shardDemandDay)
+  if (goldBalance.limiting === '制造' && goldBalance.trEffective < 0.95) {
+    warnings.push('赤金贸易开工不足：制造供应低于贸易需求，龙门币收益按制造侧计算。')
+  }
+  if (shardBalance.limiting === '制造' && shardBalance.trEffective < 0.95) {
+    warnings.push('开采协力开工不足：源石碎片供应低于贸易需求，合成玉收益按制造侧计算。')
+  }
+  if (shardBalance.limiting === '贸易' && shardBalance.mfEffective < 0.95) {
+    warnings.push('源石碎片有富余：贸易站吃不下全部碎片，多余部分只入库、不计收益。')
+  }
+  for (const q of queues) {
+    for (const room of q.assigned.MANUFACTURE || []) {
+      const balance = room.product === '赤金' ? goldBalance : room.product === '源石碎片' ? shardBalance : null
+      room.utilization = balance ? balance.mfEffective : 1
+      room.effectiveEfficiency = room.efficiency * room.utilization
+    }
+    for (const room of q.assigned.TRADING || []) {
+      const balance = room.strategy === '开采协力' ? shardBalance : goldBalance
+      room.utilization = balance ? balance.trEffective : 0
+      room.effectiveEfficiency = room.efficiency * room.utilization
+    }
+  }
   const w = opts.weights
-  const rawTotal = (finalLmd / SCORE_SCALE.lmd) * w.lmd + (finalExp / SCORE_SCALE.exp) * w.exp + (finalOrundum / SCORE_SCALE.orundum) * w.orundum + (trust / SCORE_SCALE.trust) * w.trust
+  const rawTotal = (netLmd / SCORE_SCALE.lmd) * w.lmd + (finalExp / SCORE_SCALE.exp) * w.exp + (finalOrundum / SCORE_SCALE.orundum) * w.orundum + (trust / SCORE_SCALE.trust) * w.trust
   const moodFactor = minMood < 0 ? 0.35 : minMood < 4 ? 0.8 : 1
   const total = rawTotal * moodFactor * 100
   return {
-    lmd: finalLmd, exp: finalExp, orundum: finalOrundum, trust,
+    lmd: finalLmd, netLmd, lmdCost: finalLmdCost, exp: finalExp, orundum: finalOrundum, trust,
+    balance: { gold: goldBalance, shard: shardBalance },
+    shard: {
+      produced: finalShardProduced,
+      consumed: finalShardConsumed,
+      surplus: Math.max(0, finalShardProduced - finalShardConsumed),
+      guiyan: shardGuiyan * droneFactor,
+      device: shardDevice * droneFactor,
+      lmdCost: finalLmdCost,
+      apCost: shardApCost * droneFactor,
+      byRecipe: { '固源岩': shardByRecipe['固源岩'] * droneFactor, '装置': shardByRecipe['装置'] * droneFactor },
+      source: ORUNDUM_1_7,
+    },
     minMood, total, rawTotal, moodFactor, warnings: [...warnings], combos: [...comboUsed],
   }
 }
@@ -621,6 +718,23 @@ function buildTimeline(queues, base, opts) {
   return out
 }
 
+function recommendationResource(skill) {
+  if (skill.room === 'MANUFACTURE') return skill.subcategory === '贵金属' ? '龙门币' : '合成玉'
+  if (skill.room === 'TRADING') return '龙门币 / 合成玉'
+  if (skill.room === 'CONTROL') return '制造 / 贸易'
+  if (skill.room === 'POWER') return '无人机加速'
+  return ''
+}
+
+function isLmdOrOrundumSkill(skill) {
+  if (skill.room === 'MANUFACTURE') return skill.subcategory === '贵金属' || skill.subcategory === '源石'
+  if (skill.room === 'TRADING') return ['订单效率', '订单上限', '订单质量', '特殊订单'].includes(skill.subcategory)
+  if (skill.room === 'CONTROL') return skill.subcategory === '制造加成' || skill.subcategory === '贸易加成'
+  if (skill.room === 'POWER') return skill.subcategory === '充能'
+  // 加工站副产物、会客室线索、办公室刷新、训练室、宿舍不再作为练度建议
+  return false
+}
+
 function buildRecommendations(player, data) {
   const list = []
   for (const char of player.chars) {
@@ -628,6 +742,7 @@ function buildRecommendations(player, data) {
     if (!entry) continue
     const current = bestSkillsByRoom(char, data)
     for (const skill of entry.skills || []) {
+      if (!isLmdOrOrundumSkill(skill)) continue
       if (Number(skill.phase || 0) <= Number(char.elite || 0) && Number(char.level || 1) >= Number(skill.level || 1)) continue
       const now = current[skill.room] ? skillValue(current[skill.room], skill.room) : 0
       const potential = skillValue(skill, skill.room)
@@ -639,6 +754,7 @@ function buildRecommendations(player, data) {
         rarity: char.rarity,
         room: skill.room,
         roomName: ROOM_LABEL[skill.room] || skill.room,
+        resource: recommendationResource(skill),
         skill: skill.name,
         phase: skill.phase,
         level: skill.level,
@@ -691,8 +807,12 @@ function buildFixedMix(base, opts) {
   const expMF = mfProducts.filter((p) => p === '作战记录').length
   const jadeTR = trStrategies.filter((p) => p === '开采协力').length
   const lmdTR = trStrategies.filter((p) => p === '龙门商法').length
+  const shardRecipes = mfProducts.map((product, i) => {
+    if (product !== '源石碎片') return null
+    return SHARD_RECIPES[opts.recipes?.[i]] ? opts.recipes[i] : '固源岩'
+  })
   return {
-    key: 'fixed', label: '自定义', mfProducts, trStrategies,
+    key: 'fixed', label: '自定义', mfProducts, trStrategies, shardRecipes,
     goldMF, shardMF, expMF, jadeTR, lmdTR,
   }
 }

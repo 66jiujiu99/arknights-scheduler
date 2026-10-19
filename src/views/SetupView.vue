@@ -136,6 +136,15 @@
                   <option value="作战记录">作战记录</option>
                   <option value="源石碎片" :disabled="!mfUnlocked">{{ mfUnlocked ? '源石碎片' : '源石碎片（需曾达 Lv3）' }}</option>
                 </select>
+                <select
+                  v-if="store.products[i] === '源石碎片'"
+                  class="ak-station-recipe"
+                  :value="store.recipes[i]"
+                  @change="setRecipe(i, $event.target.value)"
+                >
+                  <option value="固源岩">固源岩 ×2</option>
+                  <option value="装置">装置 ×1</option>
+                </select>
               </label>
             </div>
           </div>
@@ -151,7 +160,18 @@
                 </select>
               </label>
             </div>
-            <p class="ak-hint">源石碎片 / 开采协力需要账号曾把对应设施升到 Lv3；解锁后任意等级可用。产物与策略由你决定，排班只优化干员、换班与心情。</p>
+            <p class="ak-hint">源石碎片 / 开采协力需要账号曾把对应设施升到 Lv3；解锁后任意等级可用。固源岩按一图流 1-7（1.09 玉/理智）折算。</p>
+            <details class="ak-help">
+              <summary>搓玉配方成本（高级，默认按游戏数据）</summary>
+              <div class="ak-field-grid">
+                <label class="ak-field">固源岩配方龙门币
+                  <input type="number" min="0" step="100" :value="store.options.shardCosts.guiyanLmd" @change="setShardCost('guiyanLmd', $event.target.value)" />
+                </label>
+                <label class="ak-field">装置配方龙门币
+                  <input type="number" min="0" step="100" :value="store.options.shardCosts.deviceLmd" @change="setShardCost('deviceLmd', $event.target.value)" />
+                </label>
+              </div>
+            </details>
           </div>
 
           <div class="ak-option ak-switches">
@@ -188,7 +208,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { store, updateManual, updateOptions, generate, setProduct, setStrategy } from '../stores/session'
+import { store, updateManual, updateOptions, generate, setProduct, setStrategy, setRecipe, setShardCost } from '../stores/session'
 
 const router = useRouter()
 const localError = ref('')

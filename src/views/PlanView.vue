@@ -32,15 +32,16 @@
           </div>
           <div class="ak-candidate-score">{{ c.score.total.toFixed(1) }}<small>综合</small></div>
           <div class="ak-candidate-metrics">
-            <span>LMD {{ fmt(c.score.lmd) }}</span>
-            <span>EXP {{ fmt(c.score.exp) }}</span>
+            <span>LMD {{ fmt(c.score.netLmd) }}</span>
             <span>玉 {{ fmt(c.score.orundum) }}</span>
+            <span>EXP {{ fmt(c.score.exp) }}</span>
           </div>
           <div class="ak-candidate-mood" :class="{ 'ak-bad': c.score.minMood < 4 }">
             最低心情 {{ c.score.minMood.toFixed(1) }}
           </div>
         </button>
       </div>
+      <p class="ak-hint" style="margin:-8px 0 14px">综合分已扣除搓玉龙门币消耗，可能为负；产销不平衡时按低的一侧计算。</p>
 
       <div v-if="candidate && candidate.operationsPerDay < 3 && candidate.score.minMood < 4" class="ak-alert ak-alert-warn">
         当前每天 {{ candidate.operationsPerDay }} 次的最低心情低于 4，建议改成 3 次/天，或提高宿舍/降低高消耗干员。
@@ -86,7 +87,8 @@
             <div class="ak-facility" v-for="room in queue.assigned.MANUFACTURE" :key="room.roomId">
               <div class="ak-facility-head"><span>制造站 · {{ room.product }}</span><b>Lv{{ room.level }}</b></div>
               <div class="ak-facility-stats">
-                <span>效率 {{ pct(room.efficiency) }}</span>
+                <span>效率 {{ pct(room.efficiency) }}<template v-if="room.utilization < 0.999"> · 有效 {{ pct(room.effectiveEfficiency) }}</template></span>
+                <span v-if="room.product === '源石碎片'">{{ shardRoomText(room) }}</span>
                 <span>{{ moodText(room.moodPerOp, room.moodTotal) }}</span>
               </div>
               <div class="ak-op-list">
@@ -97,7 +99,8 @@
             <div class="ak-facility" v-for="room in queue.assigned.TRADING" :key="room.roomId">
               <div class="ak-facility-head"><span>贸易站 · {{ room.strategy }}</span><b>Lv{{ room.level }}</b></div>
               <div class="ak-facility-stats">
-                <span>效率 {{ pct(room.efficiency) }}</span>
+                <span>效率 {{ pct(room.efficiency) }}<template v-if="room.utilization < 0.999"> · 有效 {{ pct(room.effectiveEfficiency) }}</template></span>
+                <span v-if="room.utilization < 0.999">贸易开工 {{ pct(room.utilization) }}</span>
                 <span>{{ moodText(room.moodPerOp, room.moodTotal) }}</span>
               </div>
               <div class="ak-op-list">
@@ -147,6 +150,33 @@
           </section>
 
           <section class="ak-card">
+            <div class="ak-card-head"><h2>产销平衡</h2><span class="ak-tag ak-tag-dim">按低的一侧</span></div>
+            <div v-for="b in balanceRows" :key="b.label" class="ak-balance">
+              <div class="ak-balance-head"><span>{{ b.label }}</span><b>{{ balanceStatus(b) }}</b></div>
+              <div class="ak-balance-nums">
+                制造 {{ fmtRate(b.supply) }} / 天　·　贸易 {{ fmtRate(b.demand) }} / 天
+              </div>
+              <div class="ak-balance-eff">
+                制造有效 {{ pct(b.mfEffective) }}　·　贸易有效 {{ pct(b.trEffective) }}
+              </div>
+            </div>
+            <p class="ak-hint">贸易吃不满时，收益按制造供应量算；制造有富余时，多出的部分只进仓库，不计入收益。</p>
+          </section>
+
+          <section v-if="shardCost && shardCost.produced > 0.01" class="ak-card">
+            <div class="ak-card-head"><h2>搓玉消耗</h2><span class="ak-tag ak-tag-dim">1-7 折算</span></div>
+            <div class="ak-metric"><span>龙门币产出（毛）</span><b>{{ fmt(candidate.score.lmd) }}/天</b></div>
+            <div class="ak-metric"><span>源石碎片产量</span><b>{{ fmt(shardCost.produced) }}/天</b></div>
+            <div class="ak-metric"><span>贸易有效消耗</span><b>{{ fmt(shardCost.consumed) }}/天</b></div>
+            <div v-if="shardCost.guiyan > 0.01" class="ak-metric"><span>固源岩消耗</span><b>{{ fmt(shardCost.guiyan) }}/天</b></div>
+            <div v-if="shardCost.device > 0.01" class="ak-metric"><span>装置消耗</span><b>{{ fmt(shardCost.device) }}/天</b></div>
+            <div class="ak-metric"><span>龙门币消耗</span><b>{{ fmt(shardCost.lmdCost) }}/天</b></div>
+            <div v-if="shardCost.apCost > 0.01" class="ak-metric"><span>1-7 理智消耗</span><b>{{ fmt(shardCost.apCost) }} / 天</b></div>
+            <div v-if="shardCost.surplus > 0.01" class="ak-metric ak-bad"><span>碎片富余</span><b>{{ fmt(shardCost.surplus) }}/天</b></div>
+            <p class="ak-hint">按一图流 1-7：每理智 1.09 合成玉；固源岩配方 2 个 + 1600 龙门币/碎片，装置配方 1 个 + 1000 龙门币/碎片。配方龙门币可在配置中调整。搓玉本身是龙门币净消耗，净 LMD 为负是正常的。</p>
+          </section>
+
+          <section class="ak-card">
             <div class="ak-card-head"><h2>换班时间表</h2></div>
             <div class="ak-timeline">
               <div v-for="t in candidate.timeline" :key="t.label + t.time" class="ak-timeline-item">
@@ -162,10 +192,10 @@
           </section>
 
           <section v-if="store.result.meta.recommendations?.length" class="ak-card">
-            <div class="ak-card-head"><h2>练度建议</h2><span class="ak-tag ak-tag-dim">仅已拥有</span></div>
+            <div class="ak-card-head"><h2>练度建议</h2><span class="ak-tag ak-tag-dim">只算龙门币 / 合成玉</span></div>
             <div class="ak-rec" v-for="r in store.result.meta.recommendations" :key="r.charId + r.room">
               <div class="ak-rec-name">{{ r.name }} <small>{{ r.roomName }}</small></div>
-              <div class="ak-rec-detail">{{ r.skill }} · {{ reqText(r) }} <b>+{{ r.gain }}%</b></div>
+              <div class="ak-rec-detail">{{ r.roomName }} · {{ r.resource }} · {{ r.skill }} · {{ reqText(r) }} <b>+{{ r.gain }}%</b></div>
             </div>
           </section>
 
@@ -195,14 +225,32 @@ const fixedRows = computed(() => [
   { key: 'WORKSHOP', label: '加工站', level: 'Lv' + store.base.workshopLevel },
   { key: 'RECYCLE', label: '回收站', level: store.base.recycleLevel ? 'Lv' + store.base.recycleLevel : '未建' },
 ])
+const balanceRows = computed(() => {
+  const b = candidate.value?.score?.balance
+  return b ? [b.gold, b.shard] : []
+})
+const shardCost = computed(() => candidate.value?.score?.shard || null)
 const metrics = computed(() => candidate.value ? [
-  { key: 'lmd', label: '龙门币', value: fmt(candidate.value.score.lmd) },
-  { key: 'exp', label: '作战记录经验', value: fmt(candidate.value.score.exp) },
+  { key: 'lmd', label: '龙门币（净）', value: fmt(candidate.value.score.netLmd) },
   { key: 'orundum', label: '合成玉', value: fmt(candidate.value.score.orundum) },
+  { key: 'exp', label: '作战记录经验', value: fmt(candidate.value.score.exp) },
   { key: 'trust', label: '信赖', value: fmt(candidate.value.score.trust) },
 ] : [])
 
 function select(i) { store.selected = i; queueIndex.value = 0 }
+function fmtRate(n) { return Number(n || 0).toFixed(2) }
+function balanceStatus(b) {
+  if (!b) return ''
+  if (b.limiting === '无贸易需求') return '无对应贸易站'
+  if (b.limiting === '制造不足') return '制造不足'
+  if (b.limiting === '制造') return '制造不足 · 贸易吃不饱'
+  if (b.limiting === '贸易') return '贸易吃满 · 制造有富余'
+  return '产销平衡'
+}
+function shardRoomText(room) {
+  if (!room || room.product !== '源石碎片') return ''
+  return (room.shardRecipe || '固源岩') + ' ' + Number(room.materialPerHour || 0).toFixed(2) + '/h · LMD ' + Math.round(room.lmdCostPerHour || 0) + '/h'
+}
 function pct(n) { return Math.round(Number(n || 0) * 100) + '%' }
 function num(n) { return Math.round(Number(n || 0)) }
 function fmtMood(n) { return '-' + Number(n || 0).toFixed(2) }
