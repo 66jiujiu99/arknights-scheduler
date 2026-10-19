@@ -718,14 +718,6 @@ function buildTimeline(queues, base, opts) {
   return out
 }
 
-function recommendationResource(skill) {
-  if (skill.room === 'MANUFACTURE') return skill.subcategory === '贵金属' ? '龙门币' : '合成玉'
-  if (skill.room === 'TRADING') return '龙门币 / 合成玉'
-  if (skill.room === 'CONTROL') return '制造 / 贸易'
-  if (skill.room === 'POWER') return '无人机加速'
-  return ''
-}
-
 function isLmdOrOrundumSkill(skill) {
   if (skill.room === 'MANUFACTURE') return skill.subcategory === '贵金属' || skill.subcategory === '源石'
   if (skill.room === 'TRADING') return ['订单效率', '订单上限', '订单质量', '特殊订单'].includes(skill.subcategory)
@@ -735,12 +727,17 @@ function isLmdOrOrundumSkill(skill) {
   return false
 }
 
-function recommendationAllowed(skill, context) {
+function recommendationCategory(skill, context) {
   const target = context?.target
   const balance = context?.balance
-  if (target === 'lmd' && skill.subcategory === '源石') return false
-  if (target === 'orundum' && skill.subcategory === '贵金属') return false
-  if (!balance) return true
+  if (target === 'lmd' && skill.subcategory === '源石') return null
+  if (target === 'orundum' && skill.subcategory === '贵金属') return null
+  if (!balance) {
+    if (skill.room === 'MANUFACTURE') return 'general-mfg'
+    if (skill.room === 'TRADING') return 'general-trade'
+    if (skill.room === 'CONTROL' || skill.room === 'POWER') return 'support'
+    return null
+  }
   const gold = balance.gold
   const shard = balance.shard
   const goldMfgShort = gold.demand > 0 && gold.supply < gold.demand
@@ -748,36 +745,59 @@ function recommendationAllowed(skill, context) {
   const shardMfgShort = shard.demand > 0 && shard.supply < shard.demand
   const shardTradeShort = shard.supply > shard.demand
   if (skill.room === 'MANUFACTURE') {
-    if (skill.subcategory === '贵金属') return target !== 'orundum' && goldMfgShort
-    if (skill.subcategory === '源石') return target !== 'lmd' && shardMfgShort
+    if (skill.subcategory === '贵金属') return target !== 'orundum' && goldMfgShort ? 'gold-mfg' : null
+    if (skill.subcategory === '源石') return target !== 'lmd' && shardMfgShort ? 'shard-mfg' : null
   }
   if (skill.room === 'TRADING') {
-    if (target === 'lmd') return goldTradeShort
-    if (target === 'orundum') return shardTradeShort
-    return goldTradeShort || shardTradeShort
+    const goldAllowed = target !== 'orundum' && goldTradeShort
+    const shardAllowed = target !== 'lmd' && shardTradeShort
+    if (goldAllowed && shardAllowed) return 'trade-both'
+    if (goldAllowed) return 'gold-trade'
+    if (shardAllowed) return 'shard-trade'
+    return null
   }
-  return skill.room === 'CONTROL' || skill.room === 'POWER'
+  if (skill.room === 'CONTROL' || skill.room === 'POWER') return 'support'
+  return null
+}
+
+function recommendationResource(skill, category) {
+  if (category === 'gold-mfg') return '赤金制造 · 龙门币'
+  if (category === 'shard-mfg') return '源石碎片制造 · 合成玉'
+  if (category === 'gold-trade') return '龙门币贸易'
+  if (category === 'shard-trade') return '合成玉贸易'
+  if (category === 'trade-both') return '龙门币 / 合成玉贸易'
+  if (skill.room === 'CONTROL') return '制造 / 贸易'
+  if (skill.room === 'POWER') return '无人机加速'
+  return '龙门币 / 合成玉'
 }
 
 function recommendationHint(balance, target) {
   if (!balance) return ''
   const gold = balance.gold
   const shard = balance.shard
-  const points = []
   const includeGold = target !== 'orundum'
   const includeShard = target !== 'lmd'
-  const goldMfgShort = gold.demand > 0 && gold.supply < gold.demand
-  const shardMfgShort = shard.demand > 0 && shard.supply < shard.demand
-  const goldTradeShort = gold.supply > gold.demand
-  const shardTradeShort = shard.supply > shard.demand
-  if (includeGold && goldMfgShort) points.push('赤金制造')
-  if (includeShard && shardMfgShort) points.push('源石碎片制造')
-  if (includeGold && goldTradeShort) points.push('龙门币贸易产能')
-  if (includeShard && shardTradeShort) points.push('合成玉贸易产能')
+  const points = []
+  const advice = []
+  if (includeGold && gold.demand > 0 && gold.supply < gold.demand) {
+    points.push('赤金制造不足')
+    advice.push('赤金制造')
+  }
+  if (includeShard && shard.demand > 0 && shard.supply < shard.demand) {
+    points.push('源石碎片制造不足')
+    advice.push('源石碎片制造')
+  }
+  if (includeGold && gold.supply > gold.demand) {
+    points.push('龙门币贸易产能不足（赤金有富余）')
+    advice.push('龙门币贸易')
+  }
+  if (includeShard && shard.supply > shard.demand) {
+    points.push('合成玉贸易产能不足（源石碎片有富余）')
+    advice.push('合成玉贸易')
+  }
   if (!points.length) return ''
   const targetText = target === 'lmd' ? '（主攻龙门币）' : target === 'orundum' ? '（主攻合成玉）' : '（均衡）'
-  const mfg = points.some((x) => x.includes('制造'))
-  return '当前瓶颈' + targetText + '：' + points.join(' / ') + ' 不足，优先补' + (mfg ? '制造/中枢/发电' : '贸易/中枢/发电') + '，' + (mfg ? '暂不推荐贸易。' : '制造暂不作为首选。')
+  return '当前瓶颈' + targetText + '：' + points.join('、') + '。建议优先补 ' + advice.join('、') + '；中枢/发电对两侧都有帮助。'
 }
 
 function buildRecommendations(player, data, context = {}) {
@@ -788,7 +808,8 @@ function buildRecommendations(player, data, context = {}) {
     const current = bestSkillsByRoom(char, data)
     for (const skill of entry.skills || []) {
       if (!isLmdOrOrundumSkill(skill)) continue
-      if (!recommendationAllowed(skill, context)) continue
+      const category = recommendationCategory(skill, context)
+      if (!category) continue
       if (Number(skill.phase || 0) <= Number(char.elite || 0) && Number(char.level || 1) >= Number(skill.level || 1)) continue
       const now = current[skill.room] ? skillValue(current[skill.room], skill.room) : 0
       const potential = skillValue(skill, skill.room)
@@ -800,7 +821,8 @@ function buildRecommendations(player, data, context = {}) {
         rarity: char.rarity,
         room: skill.room,
         roomName: ROOM_LABEL[skill.room] || skill.room,
-        resource: recommendationResource(skill),
+        category,
+        resource: recommendationResource(skill, category),
         skill: skill.name,
         phase: skill.phase,
         level: skill.level,
@@ -809,7 +831,7 @@ function buildRecommendations(player, data, context = {}) {
     }
   }
   const seen = new Set()
-  return list
+  const deduped = list
     .sort((a, b) => b.gain - a.gain)
     .filter((item) => {
       const key = item.charId + ':' + item.room
@@ -817,7 +839,23 @@ function buildRecommendations(player, data, context = {}) {
       seen.add(key)
       return true
     })
-    .slice(0, 6)
+  if (!context.balance) return deduped.slice(0, 6)
+  const order = ['gold-mfg', 'shard-mfg', 'gold-trade', 'shard-trade', 'trade-both', 'support']
+  const picked = []
+  const used = new Set()
+  const add = (item) => {
+    const key = item.charId + ':' + item.room
+    if (used.has(key) || picked.length >= 6) return
+    used.add(key)
+    picked.push(item)
+  }
+  for (const category of order) {
+    const items = deduped.filter((item) => item.category === category)
+    const limit = category === 'support' ? 1 : 2
+    items.slice(0, limit).forEach(add)
+  }
+  deduped.forEach(add)
+  return picked.slice(0, 6)
 }
 
 function buildLayoutTips(base, data) {

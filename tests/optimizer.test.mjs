@@ -468,3 +468,37 @@ test('recommendations follow the bottleneck: manufacturing shortage excludes tra
   assert.ok(recs.some((r) => r.charId === 'mf_op'), 'manufacturing skill should be recommended')
   assert.ok(!recs.some((r) => r.charId === 'trade_op'), 'trade skill should be excluded while manufacturing is the bottleneck')
 })
+
+
+test('mixed bottleneck keeps both production and trade recommendations', () => {
+  const characters = {
+    gold_op: { id: 'gold_op', name: '赤金干员', rarity: 6, profession: '近卫', skills: [mkSkill('MANUFACTURE', '贵金属', 30, { phase: 2 })] },
+    trade_op: { id: 'trade_op', name: '贸易干员', rarity: 6, profession: '近卫', skills: [mkSkill('TRADING', '订单效率', 35, { phase: 2 })] },
+  }
+  const base = {
+    ...BASE,
+    outputs: [
+      { id: 'mf0', type: 'MANUFACTURE', level: 3 },
+      { id: 'mf1', type: 'MANUFACTURE', level: 3 },
+      { id: 'mf2', type: 'MANUFACTURE', level: 3 },
+      { id: 'mf3', type: 'MANUFACTURE', level: 3 },
+      { id: 'tr0', type: 'TRADING', level: 3 },
+      { id: 'tr1', type: 'TRADING', level: 3 },
+      { id: 'pw0', type: 'POWER', level: 3 },
+      { id: 'pw1', type: 'POWER', level: 3 },
+    ],
+    counts: { MANUFACTURE: 4, TRADING: 2, POWER: 2 },
+  }
+  const player = mkPlayer([{ id: 'gold_op', elite: 0, level: 1 }, { id: 'trade_op', elite: 0, level: 1 }, ...pool(20)])
+  const result = generatePlans(player, base, mkData(characters), {
+    mode: 'oneclick', operationsPerDay: 2, target: 'balanced',
+    products: ['赤金', '源石碎片', '源石碎片', '源石碎片'],
+    strategies: ['龙门商法', '开采协力'],
+    drones: false, weights: { lmd: 50, exp: 0, orundum: 50, trust: 0 },
+  })
+  const recs = result.meta.recommendations
+  assert.ok(recs.some((r) => r.category === 'gold-mfg'), 'gold production should be recommended')
+  assert.ok(recs.some((r) => r.category === 'shard-trade'), 'jade trade should be recommended')
+  assert.ok(result.meta.recommendationHint.includes('赤金制造'))
+  assert.ok(result.meta.recommendationHint.includes('合成玉贸易'))
+})
