@@ -41,6 +41,8 @@ export function buildBase(player, manual, data) {
     type: r.type,
     level: Number(r.level || 1),
     slotId: r.slotId,
+    formulaId: r.formulaId != null ? String(r.formulaId) : null,
+    strategy: r.strategy || null,
   }))
   const counts = { MANUFACTURE: 0, TRADING: 0, POWER: 0 }
   for (const o of outputs) counts[o.type] = (counts[o.type] || 0) + 1

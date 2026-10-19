@@ -4,7 +4,7 @@
       <div>
         <div class="ak-kicker">STEP 02 · PLAN</div>
         <h1>排班方案</h1>
-        <p v-if="store.result">3 个候选，按日收益 / 操作次数 / 心情风险选择。{{ store.options.mode === 'oneclick' ? '在游戏内为每个设施保存这些队列，之后用队列轮换一键切换。' : '按时间表手动换；会客室 / 办公室 / 训练室可按各自周期单独换。' }}</p>
+        <p v-if="store.result">产物与策略按你的配置固定；3 个候选比较换班次数、效率与心情风险。{{ store.options.mode === 'oneclick' ? '在游戏内为每个设施保存这些队列，之后用队列轮换一键切换。' : '按时间表手动换；会客室 / 办公室 / 训练室可按各自周期单独换。' }}</p>
         <p v-else>还没有生成方案。</p>
       </div>
       <div class="ak-head-actions">
@@ -14,7 +14,7 @@
     </header>
 
     <div v-if="!store.result" class="ak-card ak-empty">
-      <p>先在「基建配置」选择模式与权重，再生成方案。</p>
+      <p>先在「基建配置」选择模式、产物与贸易策略，再生成方案。</p>
       <router-link to="/setup" class="ak-btn ak-btn-primary">去配置</router-link>
     </div>
 
@@ -27,8 +27,8 @@
           @click="select(i)"
         >
           <div class="ak-candidate-top">
-            <span class="ak-candidate-label">{{ c.label }}</span>
-            <span class="ak-candidate-ops">{{ c.operationsPerDay }} 次/天</span>
+            <span class="ak-candidate-label">{{ c.label }} · {{ c.profile }}</span>
+            <span class="ak-candidate-ops">{{ c.shiftHours }}h / 班</span>
           </div>
           <div class="ak-candidate-score">{{ c.score.total.toFixed(1) }}<small>综合</small></div>
           <div class="ak-candidate-metrics">
@@ -64,9 +64,17 @@
             </button>
           </div>
 
+          <div v-if="candidate" class="ak-plan-mix">
+            制造：{{ candidate.mix.mfProducts.join(' / ') }}　·　贸易：{{ candidate.mix.trStrategies.join(' / ') }}
+          </div>
+
           <div v-if="queue" class="ak-facilities">
             <div class="ak-facility">
               <div class="ak-facility-head"><span>控制中枢</span><b>Lv{{ store.base.controlLevel }}</b></div>
+              <div class="ak-facility-stats">
+                <span>{{ moodText(queue.stats.CONTROL.moodPerOp, queue.stats.CONTROL.moodTotal) }}</span>
+                <span>制造 +{{ num(queue.stats.CONTROL.manufacture) }}% · 贸易 +{{ num(queue.stats.CONTROL.trading) }}%</span>
+              </div>
               <div class="ak-op-list">
                 <span v-for="op in queue.assigned.CONTROL" :key="op.charId" class="ak-op">
                   <i :class="'r' + op.rarity">{{ op.rarity }}★</i>{{ op.name }}
@@ -77,6 +85,10 @@
 
             <div class="ak-facility" v-for="room in queue.assigned.MANUFACTURE" :key="room.roomId">
               <div class="ak-facility-head"><span>制造站 · {{ room.product }}</span><b>Lv{{ room.level }}</b></div>
+              <div class="ak-facility-stats">
+                <span>效率 {{ pct(room.efficiency) }}</span>
+                <span>{{ moodText(room.moodPerOp, room.moodTotal) }}</span>
+              </div>
               <div class="ak-op-list">
                 <span v-for="op in room.ops" :key="op.charId" class="ak-op"><i :class="'r' + op.rarity">{{ op.rarity }}★</i>{{ op.name }}<small>{{ op.skill?.name || '' }}</small></span>
               </div>
@@ -84,6 +96,10 @@
 
             <div class="ak-facility" v-for="room in queue.assigned.TRADING" :key="room.roomId">
               <div class="ak-facility-head"><span>贸易站 · {{ room.strategy }}</span><b>Lv{{ room.level }}</b></div>
+              <div class="ak-facility-stats">
+                <span>效率 {{ pct(room.efficiency) }}</span>
+                <span>{{ moodText(room.moodPerOp, room.moodTotal) }}</span>
+              </div>
               <div class="ak-op-list">
                 <span v-for="op in room.ops" :key="op.charId" class="ak-op"><i :class="'r' + op.rarity">{{ op.rarity }}★</i>{{ op.name }}<small>{{ op.skill?.name || '' }}</small></span>
               </div>
@@ -91,6 +107,10 @@
 
             <div class="ak-facility" v-for="room in queue.assigned.POWER" :key="room.roomId">
               <div class="ak-facility-head"><span>发电站</span><b>Lv{{ room.level }}</b></div>
+              <div class="ak-facility-stats">
+                <span>充能 {{ pct(room.efficiency) }}</span>
+                <span>{{ moodText(room.moodPerOp, room.moodTotal) }}</span>
+              </div>
               <div class="ak-op-list">
                 <span v-for="op in room.ops" :key="op.charId" class="ak-op"><i :class="'r' + op.rarity">{{ op.rarity }}★</i>{{ op.name }}<small>{{ op.skill?.name || '' }}</small></span>
               </div>
@@ -98,6 +118,12 @@
 
             <div class="ak-facility" v-for="row in fixedRows" :key="row.key">
               <div class="ak-facility-head"><span>{{ row.label }}</span><b>{{ row.level }}</b></div>
+              <div class="ak-facility-stats" v-if="row.key !== 'RECYCLE' || store.base.recycleLevel > 0">
+                <span v-if="row.key === 'WORKSHOP'">副产物 +{{ num(queue.stats.WORKSHOP.efficiency) }}%</span>
+                <span v-else-if="row.key === 'CONTROL'"></span>
+                <span v-else>效率 {{ pct(queue.stats[row.key].efficiency) }}</span>
+                <span v-if="row.key !== 'WORKSHOP'">{{ moodText(queue.stats[row.key].moodPerOp, queue.stats[row.key].moodTotal) }}</span>
+              </div>
               <div class="ak-op-list">
                 <span v-if="!queue.assigned[row.key]?.length" class="ak-op ak-op-empty">—</span>
                 <span v-for="op in queue.assigned[row.key]" :key="op.charId" class="ak-op"><i :class="'r' + op.rarity">{{ op.rarity }}★</i>{{ op.name }}<small>{{ op.skill?.name || '' }}</small></span>
@@ -177,6 +203,13 @@ const metrics = computed(() => candidate.value ? [
 ] : [])
 
 function select(i) { store.selected = i; queueIndex.value = 0 }
+function pct(n) { return Math.round(Number(n || 0) * 100) + '%' }
+function num(n) { return Math.round(Number(n || 0)) }
+function fmtMood(n) { return '-' + Number(n || 0).toFixed(2) }
+function moodText(perOp, total) {
+  if (!Number.isFinite(Number(perOp)) || Number(perOp) <= 0) return '心情 —'
+  return '心情 -' + Number(perOp).toFixed(2) + '/h/人 · 总 -' + Number(total || 0).toFixed(2) + '/h'
+}
 function hh(h) { return String(Math.floor(h)).padStart(2, '0') + ':00' }
 function fmt(n) { return Math.round(Number(n || 0)).toLocaleString('zh-CN') }
 function reqText(r) {

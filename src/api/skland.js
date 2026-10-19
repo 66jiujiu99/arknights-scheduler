@@ -138,6 +138,8 @@ function normalize(info) {
   const room = (r) => r ? {
     slotId: r.slotId,
     level: Number(r.level || 1),
+    formulaId: r.formulaId != null ? String(r.formulaId) : null,
+    strategy: r.strategy || null,
     chars: (r.chars || []).map((c) => ({ ...c, charId: c.charId })),
   } : null
 

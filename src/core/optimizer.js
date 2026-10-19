@@ -193,7 +193,7 @@ function comboBonus(assigned, roomType, data) {
 }
 
 function assignQueue(pool, base, data, mix, usedCount, opts) {
-  const maxShifts = opts.mode === 'manual' ? 2 : 1
+  const maxShifts = opts.maxShifts != null ? Number(opts.maxShifts) : (opts.mode === 'manual' ? 2 : 1)
   const usedInQueue = new Set()
   const assigned = {
     CONTROL: [], MANUFACTURE: [], TRADING: [], POWER: [], MEETING: [], HIRE: [],
@@ -396,35 +396,85 @@ function scoreQueues(queues, base, data, opts, mix) {
     lmd += lmdRate * goldRatio * q.hours
     orundum += orundumRate * shardRatio * q.hours
 
-    // Rough mood simulation for this queue.
-    const controlOps = (a.CONTROL || []).length
-    const globalReduction = 0.05 * controlOps
+    // Mood / efficiency per facility, also used by the plan UI.
+    const controlOpsCount = (a.CONTROL || []).length
+    const globalReduction = 0.05 * controlOpsCount
     const perOp = []
-    for (const [key, rooms] of Object.entries({ CONTROL: a.CONTROL, MANUFACTURE: a.MANUFACTURE, TRADING: a.TRADING, POWER: a.POWER, MEETING: a.MEETING, HIRE: a.HIRE, TRAINING: a.TRAINING })) {
-      if (!rooms) continue
-      const list = key === 'CONTROL' || key === 'MEETING' || key === 'HIRE' || key === 'TRAINING' ? [{ ops: rooms }] : rooms
-      for (const room of list) {
-        const ops = room.ops || []
-        let baseRate = 1
-        if (key === 'MANUFACTURE' || key === 'TRADING') baseRate = 1 - (ops.length >= 3 ? 0.1 : ops.length >= 2 ? 0.05 : 0)
-        if (key === 'CONTROL') baseRate = 1 - 0.05 * controlOps
-        if (key === 'MEETING') baseRate = 0.95
-        if (key === 'HIRE') baseRate = 1
-        if (key !== 'CONTROL') baseRate -= globalReduction
-        baseRate = Math.max(0.05, baseRate)
-        for (const op of ops) {
-          const skill = (op.skills || []).find((s) => s.room === key) || op.skill
-          const moodMod = Number(skill?.mood || 0)
-          perOp.push({ charId: op.charId, rate: Math.min(2.5, Math.max(0.15, baseRate + moodMod)), key })
-        }
+    const statFor = (key, ops, options = {}) => {
+      const list = ops || []
+      const baseRate = Math.max(0.05, Number(options.baseRate != null ? options.baseRate : (1 - globalReduction)))
+      const rates = list.map((op) => {
+        const skill = (op.skills || []).find((x) => x.room === key) || op.skill
+        const moodMod = Number(skill?.mood || 0)
+        return { charId: op.charId, rate: Math.min(2.5, Math.max(0, baseRate + moodMod)) }
+      })
+      perOp.push(...rates.map((r) => ({ ...r, key })))
+      const stat = {
+        count: list.length,
+        moodPerOp: rates.length ? rates.reduce((sum, r) => sum + r.rate, 0) / rates.length : 0,
+        moodTotal: rates.reduce((sum, r) => sum + r.rate, 0),
       }
+      if (options.efficiency != null) stat.efficiency = options.efficiency
+      return stat
     }
-    for (const item of perOp) {
-      const prev = moodMap.get(item.charId)
-      if (prev === undefined) continue
-      moodMap.set(item.charId, prev)
+
+    q.stats = {}
+    // Control center: its own mood reduction + global buffs.
+    q.stats.CONTROL = statFor('CONTROL', a.CONTROL || [], {
+      baseRate: 1 - 0.05 * controlOpsCount,
+      efficiency: null,
+    })
+    q.stats.CONTROL.manufacture = control.manufacture
+    q.stats.CONTROL.trading = control.trading
+
+    for (const room of a.MANUFACTURE || []) {
+      const ops = room.ops || []
+      const stat = statFor('MANUFACTURE', ops, {
+        baseRate: 1 - (ops.length >= 3 ? 0.1 : ops.length >= 2 ? 0.05 : 0) - globalReduction,
+        efficiency: room.efficiency,
+      })
+      room.moodPerOp = stat.moodPerOp
+      room.moodTotal = stat.moodTotal
     }
-    // Track mood separately below (needs sequential queues).
+    for (const room of a.TRADING || []) {
+      const ops = room.ops || []
+      const stat = statFor('TRADING', ops, {
+        baseRate: 1 - (ops.length >= 3 ? 0.1 : ops.length >= 2 ? 0.05 : 0) - globalReduction,
+        efficiency: room.efficiency,
+      })
+      room.moodPerOp = stat.moodPerOp
+      room.moodTotal = stat.moodTotal
+    }
+    for (const room of a.POWER || []) {
+      const ops = room.ops || []
+      const eff = 1 + 0.05 * ops.length + skillSum(ops, 'POWER', '') / 100
+      room.efficiency = eff
+      const stat = statFor('POWER', ops, { baseRate: 1 - globalReduction, efficiency: eff })
+      room.moodPerOp = stat.moodPerOp
+      room.moodTotal = stat.moodTotal
+    }
+    q.stats.MEETING = statFor('MEETING', a.MEETING || [], {
+      baseRate: 0.95 - globalReduction,
+      efficiency: 1 + 0.05 * (a.MEETING || []).length + skillSum(a.MEETING || [], 'MEETING', '') / 100,
+    })
+    q.stats.HIRE = statFor('HIRE', a.HIRE || [], {
+      baseRate: 1 - globalReduction,
+      efficiency: 1 + 0.05 * (a.HIRE || []).length + skillSum(a.HIRE || [], 'HIRE', '') / 100,
+    })
+    q.stats.TRAINING = statFor('TRAINING', a.TRAINING || [], {
+      baseRate: 1 - globalReduction,
+      efficiency: 1 + 0.05 * (a.TRAINING || []).length + skillSum(a.TRAINING || [], 'TRAINING', '') / 100,
+    })
+    q.stats.WORKSHOP = statFor('WORKSHOP', a.WORKSHOP || [], {
+      baseRate: 0,
+      efficiency: skillSum(a.WORKSHOP || [], 'WORKSHOP', ''),
+    })
+    q.stats.WORKSHOP.moodPerOp = 0
+    q.stats.WORKSHOP.moodTotal = 0
+    q.stats.RECYCLE = statFor('RECYCLE', a.RECYCLE || [], {
+      baseRate: 1 - globalReduction,
+      efficiency: 1 + 0.01 * (a.RECYCLE || []).length + skillSum(a.RECYCLE || [], 'RECYCLE', '') / 100,
+    })
     q.moodRate = perOp
   }
 
@@ -618,44 +668,133 @@ function buildLayoutTips(base, data) {
   return tips.slice(0, 2)
 }
 
-export function generatePlans(player, base, data, options) {
-  const opts = normalizeOptions(options)
-  const pool = preparePool(player, data)
-  const mixes = enumerateMixes(base, opts)
+function buildFixedMix(base, opts) {
+  const mfRooms = (base.outputs || []).filter((o) => o.type === 'MANUFACTURE')
+  const trRooms = (base.outputs || []).filter((o) => o.type === 'TRADING')
+  const mfProducts = mfRooms.map((room, i) => {
+    const value = opts.products ? opts.products[i] : null
+    if (value === '源石碎片' && Number(room.level) < 3) return '作战记录'
+    return ['赤金', '作战记录', '源石碎片'].includes(value) ? value : '赤金'
+  })
+  const trStrategies = trRooms.map((room, i) => {
+    const value = opts.strategies ? opts.strategies[i] : null
+    if (value === '开采协力' && Number(room.level) < 3) return '龙门商法'
+    return ['龙门商法', '开采协力'].includes(value) ? value : '龙门商法'
+  })
+  const goldMF = mfProducts.filter((p) => p === '赤金').length
+  const shardMF = mfProducts.filter((p) => p === '源石碎片').length
+  const expMF = mfProducts.filter((p) => p === '作战记录').length
+  const jadeTR = trStrategies.filter((p) => p === '开采协力').length
+  const lmdTR = trStrategies.filter((p) => p === '龙门商法').length
+  return {
+    key: 'fixed', label: '自定义', mfProducts, trStrategies,
+    goldMF, shardMF, expMF, jadeTR, lmdTR,
+  }
+}
+
+function buildVariants(opts) {
+  const maxQ = opts.mode === 'oneclick' ? 3 : 4
+  const baseQ = Math.min(maxQ, Math.max(1, Number(opts.queueCount || 3)))
+  const specs = [
+    { profile: '推荐', queueCount: baseQ, maxShifts: opts.mode === 'manual' ? 2 : 1 },
+    { profile: '省心', queueCount: Math.max(2, baseQ - 1), maxShifts: 1 },
+    { profile: '极限', queueCount: Math.min(maxQ, baseQ + 1), maxShifts: 2 },
+  ]
+  const out = []
+  const seen = new Set()
+  const push = (spec) => {
+    const key = spec.queueCount + ':' + spec.maxShifts
+    if (seen.has(key) || out.length >= 3) return
+    seen.add(key)
+    out.push(spec)
+  }
+  specs.forEach(push)
+  const fillers = [
+    { profile: '均衡', queueCount: Math.min(maxQ, baseQ + 1), maxShifts: 1 },
+    { profile: '均衡', queueCount: baseQ, maxShifts: 2 },
+    { profile: '均衡', queueCount: Math.max(2, baseQ - 1), maxShifts: 2 },
+    { profile: '均衡', queueCount: Math.max(2, baseQ - 1), maxShifts: 1 },
+  ]
+  fillers.forEach(push)
+  return out
+}
+
+function makeFixedCandidates(pool, base, data, opts, fixed) {
   const candidates = []
-  for (const mix of mixes) {
-    const queues = makeQueuePlan(pool, base, data, mix, opts)
-    const score = scoreQueues(queues, base, data, opts, mix)
+  for (const variant of buildVariants(opts)) {
+    const vopts = {
+      ...opts,
+      queueCount: variant.queueCount,
+      hours: 24 / variant.queueCount,
+      maxShifts: variant.maxShifts,
+    }
+    const queues = makeQueuePlan(pool, base, data, fixed, vopts)
+    const score = scoreQueues(queues, base, data, vopts, fixed)
     candidates.push({
-      id: mix.key,
-      label: mix.label,
-      mix: { goldMF: mix.goldMF, shardMF: mix.shardMF, expMF: mix.expMF, jadeTR: mix.jadeTR, lmdTR: mix.lmdTR },
+      id: 'fixed-' + variant.profile + '-' + variant.queueCount + '-' + variant.maxShifts,
+      label: variant.queueCount + ' 次/天',
+      profile: variant.profile,
+      maxShifts: variant.maxShifts,
+      mix: { goldMF: fixed.goldMF, shardMF: fixed.shardMF, expMF: fixed.expMF, jadeTR: fixed.jadeTR, lmdTR: fixed.lmdTR, mfProducts: fixed.mfProducts, trStrategies: fixed.trStrategies },
       queues,
       score,
-      operationsPerDay: opts.queueCount,
-      shiftHours: opts.hours,
-      timeline: buildTimeline(queues, base, opts),
+      operationsPerDay: variant.queueCount,
+      shiftHours: vopts.hours,
+      timeline: buildTimeline(queues, base, vopts),
       layoutTips: opts.suggestions ? buildLayoutTips(base, data) : [],
     })
   }
-  candidates.sort((a, b) => b.score.total - a.score.total)
-  const picked = []
-  const labels = new Set()
-  for (const c of candidates) {
-    if (picked.length >= 3) break
-    if (labels.has(c.label)) continue
-    picked.push(c)
-    labels.add(c.label)
-  }
-  for (const c of candidates) {
-    if (picked.length >= 3) break
-    if (!picked.includes(c)) picked.push(c)
+  return candidates
+}
+
+export function generatePlans(player, base, data, options) {
+  const opts = normalizeOptions(options)
+  const pool = preparePool(player, data)
+  const fixedMode = Array.isArray(opts.products) && opts.products.length > 0
+  let picked = []
+  if (fixedMode) {
+    const fixed = buildFixedMix(base, opts)
+    picked = makeFixedCandidates(pool, base, data, opts, fixed)
+  } else {
+    const mixes = enumerateMixes(base, opts)
+    const candidates = []
+    for (const mix of mixes) {
+      const queues = makeQueuePlan(pool, base, data, mix, opts)
+      const score = scoreQueues(queues, base, data, opts, mix)
+      candidates.push({
+        id: mix.key,
+        label: mix.label,
+        profile: mix.label,
+        mix: { goldMF: mix.goldMF, shardMF: mix.shardMF, expMF: mix.expMF, jadeTR: mix.jadeTR, lmdTR: mix.lmdTR },
+        queues,
+        score,
+        operationsPerDay: opts.queueCount,
+        shiftHours: opts.hours,
+        timeline: buildTimeline(queues, base, opts),
+        layoutTips: opts.suggestions ? buildLayoutTips(base, data) : [],
+      })
+    }
+    candidates.sort((a, b) => b.score.total - a.score.total)
+    const labels = new Set()
+    for (const c of candidates) {
+      if (picked.length >= 3) break
+      if (labels.has(c.label)) continue
+      picked.push(c)
+      labels.add(c.label)
+    }
+    for (const c of candidates) {
+      if (picked.length >= 3) break
+      if (!picked.includes(c)) picked.push(c)
+    }
   }
   return {
     candidates: picked,
     meta: {
       mode: opts.mode,
       operationsPerDay: opts.queueCount,
+      fixedMode,
+      products: opts.products || [],
+      strategies: opts.strategies || [],
       warnings: base.issues || [],
       recommendations: buildRecommendations(player, data),
       dataVersion: data.meta?.version || '',
