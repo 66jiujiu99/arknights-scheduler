@@ -103,7 +103,19 @@ tests/                效率与结构测试
 
 ## 部署
 
-推送到 <code>main</code> 后，GitHub Actions 自动部署到 Pages：
+### Cloudflare Pages（当前主站）
+
+- 项目：<code>ak-scheduler</code>
+- 地址：<https://ak-scheduler.pages.dev/>
+- 构建命令：<code>npm run build</code>
+- 输出目录：<code>dist</code>
+- 根目录：<code>/</code>
+
+Cloudflare Pages 构建环境会设置 <code>CF_PAGES=1</code>，Vite 因此使用根路径 <code>/</code>；推送到 <code>main</code> 后自动构建部署。
+
+### GitHub Pages（备用）
+
+GitHub Actions 仍会在 push 后构建，使用子路径 <code>/arknights-scheduler/</code>：
 
 <https://66jiujiu99.github.io/arknights-scheduler/>
 
