@@ -339,3 +339,28 @@ test('fixed products/strategies are respected and facilities expose mood/efficie
     }
   }
 })
+
+
+test('recipe unlock is account-wide: one Lv3 room unlocks shards for all rooms', () => {
+  const mixedBase = {
+    ...BASE,
+    outputs: [
+      { id: 'mf0', type: 'MANUFACTURE', level: 3 },
+      { id: 'mf1', type: 'MANUFACTURE', level: 1 },
+      { id: 'tr0', type: 'TRADING', level: 3 },
+      { id: 'pw0', type: 'POWER', level: 3 },
+    ],
+    counts: { MANUFACTURE: 2, TRADING: 1, POWER: 1 },
+  }
+  const data = mkData()
+  const player = mkPlayer(pool(30))
+  const products = ['源石碎片', '源石碎片']
+  const strategies = ['开采协力']
+  const result = generatePlans(player, mixedBase, data, {
+    mode: 'oneclick', operationsPerDay: 2,
+    products, strategies, drones: false,
+    weights: { lmd: 0, exp: 0, orundum: 100, trust: 0 },
+  })
+  assert.deepEqual(result.candidates[0].mix.mfProducts, products)
+  assert.deepEqual(result.candidates[0].mix.trStrategies, strategies)
+})

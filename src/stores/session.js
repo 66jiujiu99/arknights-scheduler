@@ -20,7 +20,11 @@ function productFromRoom(room) {
 }
 
 function strategyFromRoom(room) {
-  return room.strategy === 'O_DIAMOND' && room.level >= 3 ? '开采协力' : '龙门商法'
+  return room.strategy === 'O_DIAMOND' ? '开采协力' : '龙门商法'
+}
+
+function hasRecipeUnlock(rooms) {
+  return rooms.some((room) => Number(room.level) >= 3 || ['13', '14'].includes(String(room.formulaId || '')) || room.strategy === 'O_DIAMOND')
 }
 
 function readArray(key) {
@@ -82,15 +86,17 @@ function syncProduction() {
   if (!store.base) return
   const mfRooms = (store.base.outputs || []).filter((o) => o.type === 'MANUFACTURE')
   const trRooms = (store.base.outputs || []).filter((o) => o.type === 'TRADING')
+  const mfUnlocked = hasRecipeUnlock(mfRooms)
+  const trUnlocked = hasRecipeUnlock(trRooms)
   const products = mfRooms.map((room, i) => {
     const saved = store.products[i]
-    if (saved === '源石碎片' && room.level < 3) return '作战记录'
+    if (saved === '源石碎片' && !mfUnlocked) return '作战记录'
     if (MF_PRODUCTS.includes(saved)) return saved
     return productFromRoom(room) || '赤金'
   })
   const strategies = trRooms.map((room, i) => {
     const saved = store.strategies[i]
-    if (saved === '开采协力' && room.level < 3) return '龙门商法'
+    if (saved === '开采协力' && !trUnlocked) return '龙门商法'
     if (TR_STRATEGIES.includes(saved)) return saved
     return strategyFromRoom(room)
   })

@@ -537,12 +537,12 @@ function enumerateMixes(base, opts) {
   const tr = base.counts.TRADING
   const mfRooms = (base.outputs || []).filter((o) => o.type === 'MANUFACTURE')
   const trRooms = (base.outputs || []).filter((o) => o.type === 'TRADING')
-  const mfLv3 = mfRooms.filter((r) => Number(r.level) >= 3).length
-  const trLv3 = trRooms.filter((r) => Number(r.level) >= 3).length
+  const mfUnlocked = hasRecipeUnlock(mfRooms)
+  const trUnlocked = hasRecipeUnlock(trRooms)
   const list = []
   for (let goldMF = 0; goldMF <= Math.min(mf, tr); goldMF += 1) {
-    for (let jadeTR = 0; jadeTR <= trLv3; jadeTR += 1) {
-      for (let shardMF = 0; shardMF <= Math.min(mfLv3, mf - goldMF); shardMF += 1) {
+    for (let jadeTR = 0; jadeTR <= (trUnlocked ? tr : 0); jadeTR += 1) {
+      for (let shardMF = 0; shardMF <= (mfUnlocked ? mf - goldMF : 0); shardMF += 1) {
         const expMF = mf - goldMF - shardMF
         const lmdTR = tr - jadeTR
         // Recipes are level-gated: 源石碎片 / 开采协力 require Lv3.
@@ -554,7 +554,6 @@ function enumerateMixes(base, opts) {
         }
         placed = 0
         for (let i = 0; i < mfRooms.length && placed < shardMF; i += 1) {
-          if (Number(mfRooms[i].level) < 3) continue
           if (mfProducts[i] === '赤金') continue
           mfProducts[i] = '源石碎片'
           placed += 1
@@ -562,7 +561,7 @@ function enumerateMixes(base, opts) {
         const trStrategies = new Array(trRooms.length).fill('龙门商法')
         placed = 0
         for (let i = 0; i < trRooms.length && placed < jadeTR; i += 1) {
-          if (Number(trRooms[i].level) < 3) continue
+          if (trStrategies[i] === '开采协力') continue
           trStrategies[i] = '开采协力'
           placed += 1
         }
@@ -668,17 +667,23 @@ function buildLayoutTips(base, data) {
   return tips.slice(0, 2)
 }
 
+function hasRecipeUnlock(rooms) {
+  return rooms.some((room) => Number(room.level) >= 3 || ['13', '14'].includes(String(room.formulaId || '')) || room.strategy === 'O_DIAMOND')
+}
+
 function buildFixedMix(base, opts) {
   const mfRooms = (base.outputs || []).filter((o) => o.type === 'MANUFACTURE')
   const trRooms = (base.outputs || []).filter((o) => o.type === 'TRADING')
+  const mfUnlocked = hasRecipeUnlock(mfRooms)
+  const trUnlocked = hasRecipeUnlock(trRooms)
   const mfProducts = mfRooms.map((room, i) => {
     const value = opts.products ? opts.products[i] : null
-    if (value === '源石碎片' && Number(room.level) < 3) return '作战记录'
+    if (value === '源石碎片' && !mfUnlocked) return '作战记录'
     return ['赤金', '作战记录', '源石碎片'].includes(value) ? value : '赤金'
   })
   const trStrategies = trRooms.map((room, i) => {
     const value = opts.strategies ? opts.strategies[i] : null
-    if (value === '开采协力' && Number(room.level) < 3) return '龙门商法'
+    if (value === '开采协力' && !trUnlocked) return '龙门商法'
     return ['龙门商法', '开采协力'].includes(value) ? value : '龙门商法'
   })
   const goldMF = mfProducts.filter((p) => p === '赤金').length
