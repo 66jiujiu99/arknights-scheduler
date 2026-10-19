@@ -301,3 +301,41 @@ test('level-gated recipes: 源石碎片 / 开采协力 not used below Lv3', () =
   assert.equal(c.mix.jadeTR, 0)
   assert.equal(c.score.orundum, 0)
 })
+
+
+test('fixed products/strategies are respected and facilities expose mood/efficiency', () => {
+  const data = mkData()
+  const player = mkPlayer(pool(60))
+  const products = ['赤金', '作战记录', '源石碎片']
+  const strategies = ['龙门商法', '开采协力', '龙门商法']
+  const result = generatePlans(player, BASE, data, {
+    mode: 'manual',
+    operationsPerDay: 3,
+    products,
+    strategies,
+    drones: false,
+    suggestions: false,
+    weights: { lmd: 40, exp: 30, orundum: 20, trust: 10 },
+  })
+  assert.equal(result.candidates.length, 3)
+  for (const c of result.candidates) {
+    assert.deepEqual(c.mix.mfProducts, products)
+    assert.deepEqual(c.mix.trStrategies, strategies)
+    const q = c.queues[0]
+    assert.equal(q.assigned.MANUFACTURE.length, 3)
+    assert.equal(q.assigned.TRADING.length, 3)
+    for (const room of q.assigned.MANUFACTURE) {
+      assert.ok(Number.isFinite(room.efficiency) && room.efficiency > 1)
+      assert.ok(Number.isFinite(room.moodPerOp))
+      assert.ok(room.moodPerOp > 0)
+    }
+    for (const room of q.assigned.TRADING) {
+      assert.ok(Number.isFinite(room.efficiency) && room.efficiency > 1)
+      assert.ok(Number.isFinite(room.moodPerOp))
+    }
+    for (const key of ['CONTROL', 'MEETING', 'HIRE', 'TRAINING', 'WORKSHOP', 'RECYCLE']) {
+      assert.ok(q.stats[key], 'missing stats ' + key)
+      assert.ok(Number.isFinite(q.stats[key].moodPerOp))
+    }
+  }
+})

@@ -26,12 +26,21 @@ function check(name, ok, detail = '') {
 
 const session = await loginWithPair(process.env.AK_CRED)
 const base = buildBase(session, { ...DEFAULT_MANUAL, workshopLevel: 3, recycleLevel: 3, privateCount: 8, useAssistants: true }, data)
+const mfCount = base.counts.MANUFACTURE
+const trCount = base.counts.TRADING
+const balancedProducts = Array.from({ length: mfCount }, (_, i) => (i < Math.ceil(mfCount / 2) ? '赤金' : '作战记录'))
+const balancedStrategies = Array.from({ length: trCount }, () => '龙门商法')
+const lmdProducts = Array.from({ length: mfCount }, () => '赤金')
+const expProducts = Array.from({ length: mfCount }, () => '作战记录')
+const jadeProducts = Array.from({ length: mfCount }, () => '源石碎片')
+const lmdStrategies = Array.from({ length: trCount }, () => '龙门商法')
+const jadeStrategies = Array.from({ length: trCount }, () => '开采协力')
 const weights = { lmd: 40, exp: 30, orundum: 20, trust: 10 }
-const one = generatePlans(session, base, data, { mode: 'oneclick', operationsPerDay: 2, weights, drones: true }).candidates[0]
-const manual = generatePlans(session, base, data, { mode: 'manual', operationsPerDay: 3, weights, drones: true }).candidates[0]
-const lmdOnly = generatePlans(session, base, data, { mode: 'oneclick', operationsPerDay: 2, weights: { lmd: 100, exp: 0, orundum: 0, trust: 0 }, drones: true }).candidates[0]
-const expOnly = generatePlans(session, base, data, { mode: 'oneclick', operationsPerDay: 2, weights: { lmd: 0, exp: 100, orundum: 0, trust: 0 }, drones: true }).candidates[0]
-const jadeOnly = generatePlans(session, base, data, { mode: 'oneclick', operationsPerDay: 2, weights: { lmd: 0, exp: 0, orundum: 100, trust: 0 }, drones: true }).candidates[0]
+const one = generatePlans(session, base, data, { mode: 'oneclick', operationsPerDay: 2, products: balancedProducts, strategies: balancedStrategies, drones: true }).candidates.find((x) => x.profile === '推荐')
+const manual = generatePlans(session, base, data, { mode: 'manual', operationsPerDay: 3, products: balancedProducts, strategies: balancedStrategies, drones: true }).candidates.find((x) => x.profile === '推荐')
+const lmdOnly = generatePlans(session, base, data, { mode: 'oneclick', operationsPerDay: 2, products: lmdProducts, strategies: lmdStrategies, drones: true }).candidates[0]
+const expOnly = generatePlans(session, base, data, { mode: 'oneclick', operationsPerDay: 2, products: expProducts, strategies: lmdStrategies, drones: true }).candidates[0]
+const jadeOnly = generatePlans(session, base, data, { mode: 'oneclick', operationsPerDay: 2, products: jadeProducts, strategies: jadeStrategies, drones: true }).candidates[0]
 
 function expectedTotal(c) {
   const totalW = weights.lmd + weights.exp + weights.orundum + weights.trust || 1
@@ -77,10 +86,12 @@ check('total matches normalised formula (manual)', Math.abs(expectedTotal(manual
 check('one-click plan valid', validatePlan(one) === '', validatePlan(one))
 check('manual plan valid', validatePlan(manual) === '', validatePlan(manual))
 check('no burnout (manual)', manual.score.minMood >= 0, manual.score.minMood.toFixed(1))
-check('LMD weights produce LMD output', lmdOnly.score.lmd > 0 && lmdOnly.score.lmd >= expOnly.score.lmd && lmdOnly.score.lmd >= jadeOnly.score.lmd, String(Math.round(lmdOnly.score.lmd)))
-check('EXP weights produce EXP output', expOnly.score.exp > 0 && expOnly.score.exp >= lmdOnly.score.exp && expOnly.score.exp >= jadeOnly.score.exp, String(Math.round(expOnly.score.exp)))
-check('Orundum weights produce jade output', jadeOnly.score.orundum > 0 && jadeOnly.score.orundum >= lmdOnly.score.orundum && jadeOnly.score.orundum >= expOnly.score.orundum, String(Math.round(jadeOnly.score.orundum)))
+check('gold products produce LMD', lmdOnly.score.lmd > 0, String(Math.round(lmdOnly.score.lmd)))
+check('record products produce EXP', expOnly.score.exp > 0, String(Math.round(expOnly.score.exp)))
+check('shard/jade products produce orundum', jadeOnly.score.orundum > 0, String(Math.round(jadeOnly.score.orundum)))
 check('outputs within plausible bounds', one.score.lmd < 60000 && one.score.exp < 60000 && one.score.orundum < 2000)
+check('fixed products are kept in every plan', one.mix.mfProducts.join('/') === balancedProducts.join('/') && one.mix.trStrategies.join('/') === balancedStrategies.join('/'))
+check('every working facility exposes efficiency and mood', one.queues[0].assigned.MANUFACTURE.every((r) => Number.isFinite(r.efficiency) && r.efficiency > 1 && Number.isFinite(r.moodPerOp) && r.moodPerOp > 0) && Number.isFinite(one.queues[0].stats.CONTROL.moodPerOp))
 check('plan uses owned operators only', validatePlan(one) === '')
 check('recommendations only owned', (generatePlans(session, base, data, { mode: 'oneclick', operationsPerDay: 2, weights, drones: true }).meta.recommendations || []).every((r) => session.chars.some((c) => c.charId === r.charId)))
 

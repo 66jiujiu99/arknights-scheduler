@@ -11,11 +11,12 @@
 - **一键换班**：少操作。按游戏内「队列轮换」的预设队列设计，每天点 1~3 次。
 - **效率最大**：按时刻表手动换，允许不同设施不同周期，追求更高的日产出。
 
-每个候选按你设置的 **龙门币 / 经验 / 合成玉 / 信赖** 权重排序，并给出最低心情、换班时间表、生效组合、练度建议与布局建议。
+制造站产物、贸易站策略默认读取你账号当前的 `formulaId` / `strategy`，也可以逐站修改；每个候选比较换班次数、日收益、最低心情与操作成本，并给出每个设施的效率 / 心情消耗、换班时间表、生效组合、练度建议与布局建议。
 
 ## 纯静态
 
-- Vue 3 + Vite，构建产物是纯 HTML/JS/CSS，直接部署 GitHub Pages。
+- Vue 3 + Vite，构建产物是纯 HTML/JS/CSS，可部署 Cloudflare Pages / GitHub Pages。
+- 莱茵生命 / Rhine Lab 视觉：暖灰纸面、墨黑、暖杏金、档案式编号与细线。
 - 没有后端：凭证只存浏览器 localStorage；请求由浏览器直连森空岛。
 - 浏览器侧包含设备指纹生成与请求签名（vendor 的 skland-kit 浏览器 bundle）。
 - 游戏数据在构建时生成静态 JSON，页面运行时只读。
@@ -73,7 +74,7 @@ npm run test:optimizer
 ## 测试
 
 ~~~bash
-npm run test:optimizer   # 15 个效率/结构用例，无需凭证
+npm run test:optimizer   # 16 个效率/结构用例，无需凭证
 npm run test:options     # 2 个权重状态回归用例
 npm run check:efficiency # 真实账号端到端效率检查，需要 AK_CRED
 ~~~
@@ -123,3 +124,13 @@ GitHub Actions 仍会在 push 后构建，使用子路径 <code>/arknights-sched
 ## 许可
 
 MIT
+
+## 商标说明
+
+浏览器标签图标使用《明日方舟》罗德岛标志，版权归 Hypergryph / 鹰角网络所有；本项目为非官方同人工具。
+
+## 视觉参考
+
+- [LBEILC/RhineLabUI](https://github.com/LBEILC/RhineLabUI)（MIT）：暖灰纸面、墨黑正文、暖杏金选中信号、档案式排版。
+- [Rad-Weed/rhine-lab-motion](https://github.com/Rad-Weed/rhine-lab-motion)（MIT）：莱茵生命 UI 设计 token 与动效语言。
+- 标签图标使用 PRTS 的罗德岛标志，版权归 Hypergryph / 鹰角网络所有。

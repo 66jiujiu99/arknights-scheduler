@@ -127,12 +127,31 @@
           </div>
 
           <div class="ak-option">
-            <div class="ak-option-head"><span>目标权重</span><span class="ak-hint">自动归一</span></div>
-            <div v-for="w in weightRows" :key="w.key" class="ak-weight">
-              <label>{{ w.label }}</label>
-              <input type="range" min="0" max="100" :value="store.options.weights[w.key]" @input="setWeight(w.key, $event.target.value)" />
-              <span>{{ weightPct[w.key] }}%</span>
+            <div class="ak-option-head"><span>制造站产物</span><span class="ak-hint">按站指定</span></div>
+            <div class="ak-station-list">
+              <label v-for="(room, i) in mfRooms" :key="'mf' + i" class="ak-station">
+                <span>制造站 {{ i + 1 }} <small>Lv{{ room.level }}</small></span>
+                <select :value="store.products[i]" @change="setProduct(i, $event.target.value)">
+                  <option value="赤金">赤金</option>
+                  <option value="作战记录">作战记录</option>
+                  <option value="源石碎片" :disabled="room.level < 3">源石碎片（Lv3）</option>
+                </select>
+              </label>
             </div>
+          </div>
+
+          <div class="ak-option">
+            <div class="ak-option-head"><span>贸易站策略</span><span class="ak-hint">按站指定</span></div>
+            <div class="ak-station-list">
+              <label v-for="(room, i) in trRooms" :key="'tr' + i" class="ak-station">
+                <span>贸易站 {{ i + 1 }} <small>Lv{{ room.level }}</small></span>
+                <select :value="store.strategies[i]" @change="setStrategy(i, $event.target.value)">
+                  <option value="龙门商法">龙门商法（龙门币）</option>
+                  <option value="开采协力" :disabled="room.level < 3">开采协力（合成玉，Lv3）</option>
+                </select>
+              </label>
+            </div>
+            <p class="ak-hint">产物与策略由你决定；排班只优化干员、换班与心情。</p>
           </div>
 
           <div class="ak-option ak-switches">
@@ -169,7 +188,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { store, updateManual, updateOptions, generate } from '../stores/session'
+import { store, updateManual, updateOptions, generate, setProduct, setStrategy } from '../stores/session'
 
 const router = useRouter()
 const localError = ref('')
@@ -179,12 +198,8 @@ const TYPE = {
   TRADING: { short: '贸', cls: 'tr' },
   POWER: { short: '电', cls: 'pw' },
 }
-const weightRows = [
-  { key: 'lmd', label: '龙门币' },
-  { key: 'exp', label: '经验' },
-  { key: 'orundum', label: '合成玉' },
-  { key: 'trust', label: '信赖' },
-]
+const mfRooms = computed(() => (store.base?.outputs || []).filter((o) => o.type === 'MANUFACTURE'))
+const trRooms = computed(() => (store.base?.outputs || []).filter((o) => o.type === 'TRADING'))
 
 const powerPct = computed(() => {
   const p = store.base?.power || { supply: 0, demand: 0 }
@@ -193,20 +208,6 @@ const powerPct = computed(() => {
 })
 const effectiveOps = computed(() => store.options.mode === 'oneclick' ? Math.min(3, store.options.operationsPerDay) : store.options.operationsPerDay)
 const hoursPerShift = computed(() => Math.round((24 / effectiveOps.value) * 10) / 10)
-const weightPct = computed(() => {
-  const w = store.options.weights || {}
-  const num = (v) => (Number.isFinite(Number(v)) ? Math.max(0, Number(v)) : 0)
-  const values = { lmd: num(w.lmd), exp: num(w.exp), orundum: num(w.orundum), trust: num(w.trust) }
-  const total = values.lmd + values.exp + values.orundum + values.trust
-  if (!total) return { lmd: 0, exp: 0, orundum: 0, trust: 0 }
-  return {
-    lmd: Math.round(values.lmd / total * 100),
-    exp: Math.round(values.exp / total * 100),
-    orundum: Math.round(values.orundum / total * 100),
-    trust: Math.round(values.trust / total * 100),
-  }
-})
-
 function typeShort(type) { return TYPE[type]?.short || '?' }
 function cellClass(cell) { return TYPE[cell.type]?.cls || '' }
 function setManual(patch) { updateManual(patch) }
@@ -215,7 +216,6 @@ function setMode(mode) {
   updateOptions({ mode, operationsPerDay: mode === 'oneclick' ? Math.min(3, store.options.operationsPerDay || 2) : Math.max(3, store.options.operationsPerDay || 3) })
 }
 function setOps(n) { updateOptions({ operationsPerDay: n }) }
-function setWeight(key, value) { updateOptions({ weights: { [key]: Math.min(100, Math.max(0, Number(value) || 0)) } }) }
 
 function doGenerate() {
   localError.value = ''
