@@ -134,7 +134,7 @@
                 <select :value="store.products[i]" @change="setProduct(i, $event.target.value)">
                   <option value="赤金">赤金</option>
                   <option value="作战记录">作战记录</option>
-                  <option value="源石碎片" :disabled="room.level < 3">源石碎片（Lv3）</option>
+                  <option value="源石碎片" :disabled="!mfUnlocked">{{ mfUnlocked ? '源石碎片' : '源石碎片（需曾达 Lv3）' }}</option>
                 </select>
               </label>
             </div>
@@ -147,11 +147,11 @@
                 <span>贸易站 {{ i + 1 }} <small>Lv{{ room.level }}</small></span>
                 <select :value="store.strategies[i]" @change="setStrategy(i, $event.target.value)">
                   <option value="龙门商法">龙门商法（龙门币）</option>
-                  <option value="开采协力" :disabled="room.level < 3">开采协力（合成玉，Lv3）</option>
+                  <option value="开采协力" :disabled="!trUnlocked">{{ trUnlocked ? '开采协力（合成玉）' : '开采协力（需曾达 Lv3）' }}</option>
                 </select>
               </label>
             </div>
-            <p class="ak-hint">产物与策略由你决定；排班只优化干员、换班与心情。</p>
+            <p class="ak-hint">源石碎片 / 开采协力需要账号曾把对应设施升到 Lv3；解锁后任意等级可用。产物与策略由你决定，排班只优化干员、换班与心情。</p>
           </div>
 
           <div class="ak-option ak-switches">
@@ -200,6 +200,8 @@ const TYPE = {
 }
 const mfRooms = computed(() => (store.base?.outputs || []).filter((o) => o.type === 'MANUFACTURE'))
 const trRooms = computed(() => (store.base?.outputs || []).filter((o) => o.type === 'TRADING'))
+const mfUnlocked = computed(() => mfRooms.value.some((room) => room.level >= 3 || ['13', '14'].includes(String(room.formulaId || ''))))
+const trUnlocked = computed(() => trRooms.value.some((room) => room.level >= 3 || room.strategy === 'O_DIAMOND'))
 
 const powerPct = computed(() => {
   const p = store.base?.power || { supply: 0, demand: 0 }
