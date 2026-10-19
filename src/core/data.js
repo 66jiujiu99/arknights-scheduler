@@ -5,7 +5,7 @@ let cache = null
 export async function loadGameData() {
   if (cache) return cache
   const get = async (name) => {
-    const res = await fetch(BASE + 'data/v5/' + name)
+    const res = await fetch(BASE + 'data/v5/' + name + '?v=20261020')
     if (!res.ok) throw new Error('加载 ' + name + ' 失败：HTTP ' + res.status)
     return res.json()
   }

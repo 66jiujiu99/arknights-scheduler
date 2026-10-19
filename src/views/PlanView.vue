@@ -192,11 +192,11 @@
           </section>
 
           <section v-if="store.result.meta.recommendations?.length" class="ak-card">
-            <div class="ak-card-head"><h2>练度建议</h2><span class="ak-tag ak-tag-dim">按瓶颈与目标</span></div>
+            <div class="ak-card-head"><h2>练度建议</h2><span class="ak-tag ak-tag-dim">按瓶颈 · 收益/代价</span></div>
             <p v-if="store.result.meta.recommendationHint" class="ak-hint" style="margin-bottom:8px">{{ store.result.meta.recommendationHint }}</p>
             <div class="ak-rec" v-for="r in store.result.meta.recommendations" :key="r.charId + r.room">
               <div class="ak-rec-name">{{ r.name }} <small>{{ r.roomName }}</small></div>
-              <div class="ak-rec-detail">{{ r.roomName }} · {{ r.resource }} · {{ r.skill }} · {{ reqText(r) }} <b>+{{ r.gain }}%</b></div>
+              <div class="ak-rec-detail">{{ r.roomName }} · {{ r.resource }} · {{ r.skill }} · 代价 {{ r.costText }} <b>+{{ r.gain }}%</b> · 性价比 {{ r.efficiency }}</div>
             </div>
           </section>
 

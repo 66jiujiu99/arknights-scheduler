@@ -800,6 +800,46 @@ function recommendationHint(balance, target) {
   return '当前瓶颈' + targetText + '：' + points.join('、') + '。建议优先补 ' + advice.join('、') + '；中枢/发电对两侧都有帮助。'
 }
 
+const PROMOTION_LMD = {
+  1: [0, 10000], 2: [0, 10000], 3: [0, 10000],
+  4: [0, 15000, 60000], 5: [0, 20000, 120000], 6: [0, 30000, 180000],
+}
+
+function recommendationCost(entry, char, skill) {
+  const rarity = Number(entry.rarity || char.rarity || 1)
+  const currentPhase = Number(char.elite || 0)
+  const targetPhase = Number(skill.phase || 0)
+  let materials = 0
+  let lmd = 0
+  for (let phase = currentPhase + 1; phase <= targetPhase; phase += 1) {
+    const costs = entry.evolveCosts?.[phase] || []
+    for (const cost of costs) {
+      if (cost.type === 'GOLD') lmd += Number(cost.count || 0)
+      else materials += Number(cost.count || 0)
+    }
+    lmd += PROMOTION_LMD[rarity]?.[phase] || 0
+  }
+  if (!entry.evolveCosts && targetPhase > currentPhase) {
+    materials += (targetPhase - currentPhase) * rarity * 2
+  }
+  const levelBase = targetPhase > currentPhase ? 1 : Number(char.level || 1)
+  const levelGap = Math.max(0, Number(skill.level || 1) - levelBase)
+  const levelPenalty = levelGap * rarity * 0.2
+  const cost = materials + lmd / 1000 + levelPenalty
+  const parts = []
+  if (targetPhase > currentPhase) {
+    parts.push('精' + targetPhase + ' 材料' + materials + (lmd ? ' + ' + Math.round(lmd / 1000) + 'k LMD' : ''))
+  }
+  if (levelGap > 0) parts.push('Lv' + skill.level + '（差' + levelGap + '级）')
+  return {
+    cost,
+    costText: parts.join(' / ') || '已满足',
+    promotionLmd: lmd,
+    promotionMaterials: materials,
+    levelGap,
+  }
+}
+
 function buildRecommendations(player, data, context = {}) {
   const list = []
   for (const char of player.chars) {
@@ -815,10 +855,11 @@ function buildRecommendations(player, data, context = {}) {
       const potential = skillValue(skill, skill.room)
       const gain = potential - now
       if (gain <= 0.5) continue
+      const costInfo = recommendationCost(entry, char, skill)
       list.push({
         charId: char.charId,
         name: char.name,
-        rarity: char.rarity,
+        rarity: entry.rarity || char.rarity,
         room: skill.room,
         roomName: ROOM_LABEL[skill.room] || skill.room,
         category,
@@ -827,12 +868,15 @@ function buildRecommendations(player, data, context = {}) {
         phase: skill.phase,
         level: skill.level,
         gain: Number(gain.toFixed(1)),
+        cost: Number(costInfo.cost.toFixed(2)),
+        costText: costInfo.costText,
+        efficiency: Number((gain / Math.max(0.5, costInfo.cost)).toFixed(2)),
       })
     }
   }
   const seen = new Set()
   const deduped = list
-    .sort((a, b) => b.gain - a.gain)
+    .sort((a, b) => b.efficiency - a.efficiency || b.gain - a.gain)
     .filter((item) => {
       const key = item.charId + ':' + item.room
       if (seen.has(key)) return false
