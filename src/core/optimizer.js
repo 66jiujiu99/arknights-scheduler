@@ -735,7 +735,52 @@ function isLmdOrOrundumSkill(skill) {
   return false
 }
 
-function buildRecommendations(player, data) {
+function recommendationAllowed(skill, context) {
+  const target = context?.target
+  const balance = context?.balance
+  if (target === 'lmd' && skill.subcategory === '源石') return false
+  if (target === 'orundum' && skill.subcategory === '贵金属') return false
+  if (!balance) return true
+  const gold = balance.gold
+  const shard = balance.shard
+  const goldMfgShort = gold.demand > 0 && gold.supply < gold.demand
+  const goldTradeShort = gold.supply > gold.demand
+  const shardMfgShort = shard.demand > 0 && shard.supply < shard.demand
+  const shardTradeShort = shard.supply > shard.demand
+  if (skill.room === 'MANUFACTURE') {
+    if (skill.subcategory === '贵金属') return target !== 'orundum' && goldMfgShort
+    if (skill.subcategory === '源石') return target !== 'lmd' && shardMfgShort
+  }
+  if (skill.room === 'TRADING') {
+    if (target === 'lmd') return goldTradeShort
+    if (target === 'orundum') return shardTradeShort
+    return goldTradeShort || shardTradeShort
+  }
+  return skill.room === 'CONTROL' || skill.room === 'POWER'
+}
+
+function recommendationHint(balance, target) {
+  if (!balance) return ''
+  const gold = balance.gold
+  const shard = balance.shard
+  const points = []
+  const includeGold = target !== 'orundum'
+  const includeShard = target !== 'lmd'
+  const goldMfgShort = gold.demand > 0 && gold.supply < gold.demand
+  const shardMfgShort = shard.demand > 0 && shard.supply < shard.demand
+  const goldTradeShort = gold.supply > gold.demand
+  const shardTradeShort = shard.supply > shard.demand
+  if (includeGold && goldMfgShort) points.push('赤金制造')
+  if (includeShard && shardMfgShort) points.push('源石碎片制造')
+  if (includeGold && goldTradeShort) points.push('龙门币贸易产能')
+  if (includeShard && shardTradeShort) points.push('合成玉贸易产能')
+  if (!points.length) return ''
+  const targetText = target === 'lmd' ? '（主攻龙门币）' : target === 'orundum' ? '（主攻合成玉）' : '（均衡）'
+  const mfg = points.some((x) => x.includes('制造'))
+  return '当前瓶颈' + targetText + '：' + points.join(' / ') + ' 不足，优先补' + (mfg ? '制造/中枢/发电' : '贸易/中枢/发电') + '，' + (mfg ? '暂不推荐贸易。' : '制造暂不作为首选。')
+}
+
+function buildRecommendations(player, data, context = {}) {
   const list = []
   for (const char of player.chars) {
     const entry = data.characters[char.charId]
@@ -743,6 +788,7 @@ function buildRecommendations(player, data) {
     const current = bestSkillsByRoom(char, data)
     for (const skill of entry.skills || []) {
       if (!isLmdOrOrundumSkill(skill)) continue
+      if (!recommendationAllowed(skill, context)) continue
       if (Number(skill.phase || 0) <= Number(char.elite || 0) && Number(char.level || 1) >= Number(skill.level || 1)) continue
       const now = current[skill.room] ? skillValue(current[skill.room], skill.room) : 0
       const potential = skillValue(skill, skill.room)
@@ -872,6 +918,22 @@ function makeFixedCandidates(pool, base, data, opts, fixed) {
   return candidates
 }
 
+function targetRaw(candidate, target) {
+  if (target === 'lmd') return candidate.score.netLmd
+  if (target === 'orundum') return candidate.score.orundum
+  return candidate.score.netLmd / SCORE_SCALE.lmd + candidate.score.orundum / SCORE_SCALE.orundum
+}
+
+function attachTargetScores(candidates, target) {
+  if (!candidates.length) return
+  const raws = candidates.map((c) => targetRaw(c, target))
+  const best = Math.max(...raws)
+  const worst = Math.min(...raws)
+  candidates.forEach((c, index) => {
+    c.score.targetScore = best === worst ? 100 : (100 * (raws[index] - worst) / (best - worst))
+  })
+}
+
 export function generatePlans(player, base, data, options) {
   const opts = normalizeOptions(options)
   const pool = preparePool(player, data)
@@ -912,16 +974,27 @@ export function generatePlans(player, base, data, options) {
       if (!picked.includes(c)) picked.push(c)
     }
   }
+  const target = opts.target || 'balanced'
+  if (opts.target) {
+    attachTargetScores(picked, target)
+    picked.sort((a, b) => b.score.targetScore - a.score.targetScore)
+  }
+  const primary = picked[0]
+  const recommendationContext = opts.target
+    ? { target: opts.target, balance: primary?.score?.balance }
+    : {}
   return {
     candidates: picked,
     meta: {
       mode: opts.mode,
+      target,
       operationsPerDay: opts.queueCount,
       fixedMode,
       products: opts.products || [],
       strategies: opts.strategies || [],
       warnings: base.issues || [],
-      recommendations: buildRecommendations(player, data),
+      recommendationHint: recommendationHint(primary?.score?.balance, target),
+      recommendations: buildRecommendations(player, data, recommendationContext),
       dataVersion: data.meta?.version || '',
       comboCount: (data.combos || []).length,
     },

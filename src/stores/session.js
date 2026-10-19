@@ -45,6 +45,7 @@ function writeArray(key, value) {
 }
 const defaultOptions = {
   mode: 'oneclick',
+  target: 'balanced',
   operationsPerDay: 2,
   weights: { lmd: 40, exp: 30, orundum: 20, trust: 10 },
   shardCosts: { guiyanLmd: 1600, deviceLmd: 1000 },
@@ -223,8 +224,7 @@ export function generate() {
     strategies: store.strategies,
     recipes: store.recipes,
   })
-  const recommended = store.result.candidates.findIndex((c) => c.profile === '推荐')
-  store.selected = recommended >= 0 ? recommended : 0
+  store.selected = 0
   return store.result
 }
 
