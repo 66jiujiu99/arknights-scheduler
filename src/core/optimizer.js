@@ -761,8 +761,8 @@ function recommendationCategory(skill, context) {
 }
 
 function recommendationResource(skill, category) {
-  if (category === 'gold-mfg') return '赤金制造 · 龙门币'
-  if (category === 'shard-mfg') return '源石碎片制造 · 合成玉'
+  if (category === 'gold-mfg') return '龙门币'
+  if (category === 'shard-mfg') return '合成玉'
   if (category === 'gold-trade') return '龙门币贸易'
   if (category === 'shard-trade') return '合成玉贸易'
   if (category === 'trade-both') return '龙门币 / 合成玉贸易'
