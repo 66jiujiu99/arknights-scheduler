@@ -74,6 +74,7 @@ npm run test:optimizer
 
 ~~~bash
 npm run test:optimizer   # 15 个效率/结构用例，无需凭证
+npm run test:options     # 2 个权重状态回归用例
 npm run check:efficiency # 真实账号端到端效率检查，需要 AK_CRED
 ~~~
 

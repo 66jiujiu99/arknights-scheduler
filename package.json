@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "build:data": "node scripts/build-base-data.mjs",
     "test:optimizer": "node tests/optimizer.test.mjs",
-    "check:efficiency": "node scripts/check-efficiency.mjs"
+    "check:efficiency": "node scripts/check-efficiency.mjs",
+    "test:options": "node --test tests/options.test.mjs"
   },
   "dependencies": {
     "pinia": "^2.3.1",

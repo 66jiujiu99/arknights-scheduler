@@ -15,12 +15,18 @@ const defaultOptions = {
 }
 
 function loadOptions() {
-  if (typeof localStorage === 'undefined') return { ...defaultOptions }
+  if (typeof localStorage === 'undefined') return { ...defaultOptions, weights: { ...defaultOptions.weights } }
   try {
     const raw = localStorage.getItem(OPTIONS_KEY)
-    return raw ? { ...defaultOptions, ...JSON.parse(raw) } : { ...defaultOptions }
+    if (!raw) return { ...defaultOptions, weights: { ...defaultOptions.weights } }
+    const parsed = JSON.parse(raw)
+    return {
+      ...defaultOptions,
+      ...parsed,
+      weights: { ...defaultOptions.weights, ...(parsed.weights || {}) },
+    }
   } catch {
-    return { ...defaultOptions }
+    return { ...defaultOptions, weights: { ...defaultOptions.weights } }
   }
 }
 
@@ -89,8 +95,13 @@ export function updateManual(patch) {
 }
 
 export function updateOptions(patch) {
-  store.options = { ...store.options, ...patch }
-  if (patch.weights) store.options.weights = { ...store.options.weights, ...patch.weights }
+  const next = { ...store.options, ...patch }
+  next.weights = { ...defaultOptions.weights, ...(store.options.weights || {}), ...(patch.weights || {}) }
+  for (const key of ['lmd', 'exp', 'orundum', 'trust']) {
+    const value = Number(next.weights[key])
+    next.weights[key] = Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : defaultOptions.weights[key]
+  }
+  store.options = next
   if (typeof localStorage !== 'undefined') {
     try { localStorage.setItem(OPTIONS_KEY, JSON.stringify(store.options)) } catch { /* ignore */ }
   }
