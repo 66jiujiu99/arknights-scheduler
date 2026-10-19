@@ -7,6 +7,7 @@ import { generatePlans } from '../core/optimizer.js'
 const OPTIONS_KEY = 'ak_v5_options'
 const PRODUCTS_KEY = 'ak_v5_products_v2'
 const STRATEGIES_KEY = 'ak_v5_strategies_v2'
+const RECIPES_KEY = 'ak_v5_recipes_v2'
 
 const MF_PRODUCTS = ['赤金', '作战记录', '源石碎片']
 const TR_STRATEGIES = ['龙门商法', '开采协力']
@@ -46,6 +47,7 @@ const defaultOptions = {
   mode: 'oneclick',
   operationsPerDay: 2,
   weights: { lmd: 40, exp: 30, orundum: 20, trust: 10 },
+  shardCosts: { guiyanLmd: 1600, deviceLmd: 1000 },
   drones: true,
   suggestions: true,
   startHour: 8,
@@ -61,6 +63,7 @@ function loadOptions() {
       ...defaultOptions,
       ...parsed,
       weights: { ...defaultOptions.weights, ...(parsed.weights || {}) },
+      shardCosts: { ...defaultOptions.shardCosts, ...(parsed.shardCosts || {}) },
     }
   } catch {
     return { ...defaultOptions, weights: { ...defaultOptions.weights } }
@@ -77,6 +80,7 @@ export const store = reactive({
   manual: loadManual(),
   products: readArray(PRODUCTS_KEY),
   strategies: readArray(STRATEGIES_KEY),
+  recipes: readArray(RECIPES_KEY),
   options: loadOptions(),
   result: null,
   selected: 0,
@@ -100,10 +104,16 @@ function syncProduction() {
     if (TR_STRATEGIES.includes(saved)) return saved
     return strategyFromRoom(room)
   })
+  const recipes = mfRooms.map((room, i) => {
+    if (products[i] !== '源石碎片') return null
+    return ['固源岩', '装置'].includes(store.recipes[i]) ? store.recipes[i] : '固源岩'
+  })
   store.products = products
   store.strategies = strategies
+  store.recipes = recipes
   writeArray(PRODUCTS_KEY, products)
   writeArray(STRATEGIES_KEY, strategies)
+  writeArray(RECIPES_KEY, recipes)
 }
 
 function rebuildBase() {
@@ -161,6 +171,9 @@ export function updateManual(patch) {
 export function updateOptions(patch) {
   const next = { ...store.options, ...patch }
   next.weights = { ...defaultOptions.weights, ...(store.options.weights || {}), ...(patch.weights || {}) }
+  next.shardCosts = { ...defaultOptions.shardCosts, ...(store.options.shardCosts || {}), ...(patch.shardCosts || {}) }
+  next.shardCosts.guiyanLmd = Math.max(0, Number(next.shardCosts.guiyanLmd) || 0)
+  next.shardCosts.deviceLmd = Math.max(0, Number(next.shardCosts.deviceLmd) || 0)
   for (const key of ['lmd', 'exp', 'orundum', 'trust']) {
     const value = Number(next.weights[key])
     next.weights[key] = Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : defaultOptions.weights[key]
@@ -175,7 +188,24 @@ export function setProduct(index, value) {
   const next = store.products.slice()
   next[index] = value
   store.products = next
+  if (value === '源石碎片' && !['固源岩', '装置'].includes(store.recipes[index])) {
+    const recipes = store.recipes.slice()
+    recipes[index] = '固源岩'
+    store.recipes = recipes
+    writeArray(RECIPES_KEY, recipes)
+  }
   writeArray(PRODUCTS_KEY, next)
+}
+
+export function setShardCost(key, value) {
+  updateOptions({ shardCosts: { [key]: Number(value) || 0 } })
+}
+
+export function setRecipe(index, value) {
+  const recipes = store.recipes.slice()
+  recipes[index] = value
+  store.recipes = recipes
+  writeArray(RECIPES_KEY, recipes)
 }
 
 export function setStrategy(index, value) {
@@ -191,6 +221,7 @@ export function generate() {
     ...store.options,
     products: store.products,
     strategies: store.strategies,
+    recipes: store.recipes,
   })
   const recommended = store.result.candidates.findIndex((c) => c.profile === '推荐')
   store.selected = recommended >= 0 ? recommended : 0

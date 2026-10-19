@@ -379,3 +379,51 @@ test('level-up suggestions ignore workshop/records and keep LMD/orundum skills',
   assert.ok(!recs.some((r) => r.charId === 'workshop_op'), 'workshop skill must not be recommended')
   assert.ok(!recs.some((r) => r.charId === 'record_op'), 'EXP-only skill must not be recommended')
 })
+
+
+test('shard plan accounts materials, LMD cost and trade bottleneck', () => {
+  const base = {
+    ...BASE,
+    outputs: [
+      { id: 'mf0', type: 'MANUFACTURE', level: 3 },
+      { id: 'tr0', type: 'TRADING', level: 3 },
+      { id: 'pw0', type: 'POWER', level: 3 },
+    ],
+    counts: { MANUFACTURE: 1, TRADING: 1, POWER: 1 },
+  }
+  const result = generatePlans(mkPlayer(pool(20)), base, mkData(), {
+    mode: 'oneclick', operationsPerDay: 2,
+    products: ['源石碎片'], strategies: ['开采协力'], recipes: ['固源岩'],
+    drones: true, weights: { lmd: 0, exp: 0, orundum: 100, trust: 0 },
+  })
+  const c = result.candidates[0]
+  const shard = c.score.shard
+  assert.ok(shard.produced > 0)
+  assert.ok(Math.abs(shard.guiyan - shard.produced * 2) < 1e-6)
+  assert.ok(Math.abs(shard.lmdCost - shard.produced * 1600) < 1e-6)
+  assert.ok(Math.abs(c.score.netLmd - (c.score.lmd - c.score.lmdCost)) < 1e-6)
+  assert.ok(c.score.balance.shard)
+  assert.ok(c.score.balance.shard.supply > 0)
+  assert.ok(c.queues[0].assigned.MANUFACTURE[0].effectiveEfficiency > 0)
+})
+
+
+test('shard LMD cost can be overridden (e.g. 1200)', () => {
+  const base = {
+    ...BASE,
+    outputs: [
+      { id: 'mf0', type: 'MANUFACTURE', level: 3 },
+      { id: 'tr0', type: 'TRADING', level: 3 },
+      { id: 'pw0', type: 'POWER', level: 3 },
+    ],
+    counts: { MANUFACTURE: 1, TRADING: 1, POWER: 1 },
+  }
+  const result = generatePlans(mkPlayer(pool(20)), base, mkData(), {
+    mode: 'oneclick', operationsPerDay: 2,
+    products: ['源石碎片'], strategies: ['开采协力'], recipes: ['固源岩'],
+    shardCosts: { guiyanLmd: 1200, deviceLmd: 1000 },
+    drones: false, weights: { lmd: 0, exp: 0, orundum: 100, trust: 0 },
+  })
+  const c = result.candidates[0]
+  assert.ok(Math.abs(c.score.shard.lmdCost - c.score.shard.produced * 1200) < 1e-6)
+})
