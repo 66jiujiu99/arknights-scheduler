@@ -33,8 +33,8 @@
           <div class="ak-candidate-score">{{ c.score.total.toFixed(1) }}<small>综合</small></div>
           <div class="ak-candidate-metrics">
             <span>LMD {{ fmt(c.score.lmd) }}</span>
-            <span>EXP {{ fmt(c.score.exp) }}</span>
             <span>玉 {{ fmt(c.score.orundum) }}</span>
+            <span>EXP {{ fmt(c.score.exp) }}</span>
           </div>
           <div class="ak-candidate-mood" :class="{ 'ak-bad': c.score.minMood < 4 }">
             最低心情 {{ c.score.minMood.toFixed(1) }}
@@ -162,10 +162,10 @@
           </section>
 
           <section v-if="store.result.meta.recommendations?.length" class="ak-card">
-            <div class="ak-card-head"><h2>练度建议</h2><span class="ak-tag ak-tag-dim">仅已拥有</span></div>
+            <div class="ak-card-head"><h2>练度建议</h2><span class="ak-tag ak-tag-dim">只算龙门币 / 合成玉</span></div>
             <div class="ak-rec" v-for="r in store.result.meta.recommendations" :key="r.charId + r.room">
               <div class="ak-rec-name">{{ r.name }} <small>{{ r.roomName }}</small></div>
-              <div class="ak-rec-detail">{{ r.skill }} · {{ reqText(r) }} <b>+{{ r.gain }}%</b></div>
+              <div class="ak-rec-detail">{{ r.roomName }} · {{ r.resource }} · {{ r.skill }} · {{ reqText(r) }} <b>+{{ r.gain }}%</b></div>
             </div>
           </section>
 
@@ -197,8 +197,8 @@ const fixedRows = computed(() => [
 ])
 const metrics = computed(() => candidate.value ? [
   { key: 'lmd', label: '龙门币', value: fmt(candidate.value.score.lmd) },
-  { key: 'exp', label: '作战记录经验', value: fmt(candidate.value.score.exp) },
   { key: 'orundum', label: '合成玉', value: fmt(candidate.value.score.orundum) },
+  { key: 'exp', label: '作战记录经验', value: fmt(candidate.value.score.exp) },
   { key: 'trust', label: '信赖', value: fmt(candidate.value.score.trust) },
 ] : [])
 

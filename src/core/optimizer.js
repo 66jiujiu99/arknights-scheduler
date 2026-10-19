@@ -621,6 +621,23 @@ function buildTimeline(queues, base, opts) {
   return out
 }
 
+function recommendationResource(skill) {
+  if (skill.room === 'MANUFACTURE') return skill.subcategory === '贵金属' ? '龙门币' : '合成玉'
+  if (skill.room === 'TRADING') return '龙门币 / 合成玉'
+  if (skill.room === 'CONTROL') return '制造 / 贸易'
+  if (skill.room === 'POWER') return '无人机加速'
+  return ''
+}
+
+function isLmdOrOrundumSkill(skill) {
+  if (skill.room === 'MANUFACTURE') return skill.subcategory === '贵金属' || skill.subcategory === '源石'
+  if (skill.room === 'TRADING') return ['订单效率', '订单上限', '订单质量', '特殊订单'].includes(skill.subcategory)
+  if (skill.room === 'CONTROL') return skill.subcategory === '制造加成' || skill.subcategory === '贸易加成'
+  if (skill.room === 'POWER') return skill.subcategory === '充能'
+  // 加工站副产物、会客室线索、办公室刷新、训练室、宿舍不再作为练度建议
+  return false
+}
+
 function buildRecommendations(player, data) {
   const list = []
   for (const char of player.chars) {
@@ -628,6 +645,7 @@ function buildRecommendations(player, data) {
     if (!entry) continue
     const current = bestSkillsByRoom(char, data)
     for (const skill of entry.skills || []) {
+      if (!isLmdOrOrundumSkill(skill)) continue
       if (Number(skill.phase || 0) <= Number(char.elite || 0) && Number(char.level || 1) >= Number(skill.level || 1)) continue
       const now = current[skill.room] ? skillValue(current[skill.room], skill.room) : 0
       const potential = skillValue(skill, skill.room)
@@ -639,6 +657,7 @@ function buildRecommendations(player, data) {
         rarity: char.rarity,
         room: skill.room,
         roomName: ROOM_LABEL[skill.room] || skill.room,
+        resource: recommendationResource(skill),
         skill: skill.name,
         phase: skill.phase,
         level: skill.level,

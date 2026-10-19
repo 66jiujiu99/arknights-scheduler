@@ -364,3 +364,18 @@ test('recipe unlock is account-wide: one Lv3 room unlocks shards for all rooms',
   assert.deepEqual(result.candidates[0].mix.mfProducts, products)
   assert.deepEqual(result.candidates[0].mix.trStrategies, strategies)
 })
+
+
+test('level-up suggestions ignore workshop/records and keep LMD/orundum skills', () => {
+  const characters = {
+    workshop_op: { id: 'workshop_op', name: '加工干员', rarity: 6, profession: '近卫', skills: [mkSkill('WORKSHOP', '副产物', 100, { phase: 2 })] },
+    record_op: { id: 'record_op', name: '记录干员', rarity: 6, profession: '近卫', skills: [mkSkill('MANUFACTURE', '作战记录', 30, { phase: 2 })] },
+    gold_op: { id: 'gold_op', name: '赤金干员', rarity: 6, profession: '近卫', skills: [mkSkill('MANUFACTURE', '贵金属', 30, { phase: 2 })] },
+  }
+  const player = mkPlayer([{ id: 'workshop_op', elite: 0, level: 1 }, { id: 'record_op', elite: 0, level: 1 }, { id: 'gold_op', elite: 0, level: 1 }, ...pool(20)])
+  const result = generate(player, mkData(characters), { weights: { lmd: 50, exp: 25, orundum: 25, trust: 0 } })
+  const recs = result.meta.recommendations
+  assert.ok(recs.some((r) => r.charId === 'gold_op'), 'LMD skill should be recommended')
+  assert.ok(!recs.some((r) => r.charId === 'workshop_op'), 'workshop skill must not be recommended')
+  assert.ok(!recs.some((r) => r.charId === 'record_op'), 'EXP-only skill must not be recommended')
+})
