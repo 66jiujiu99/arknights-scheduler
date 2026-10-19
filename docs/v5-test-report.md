@@ -34,6 +34,7 @@ npm run test:optimizer
 - 一键模式：生成 3 候选，队列 08:00 / 20:00，最低心情 12.6。
 - 效率最大模式：自动切到 3 次/天，队列 08:00 / 16:00 / 24:00，最低心情 4.0。
 - 移动端 390px：导航、候选卡、设施列表均正常；无 console/page error。
+- Cloudflare Pages 生产站 <https://ak-scheduler.pages.dev/>：同一套登录/一键/效率最大/移动端流程再次通过。
 
 截图保存在本机 <code>arknights-research/screens/</code>（含账号昵称，未提交到仓库）：
 
