@@ -3,9 +3,11 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parseBuff, effectScore, EFFECT_TYPES } from './lib/effects.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const OUT = join(ROOT, 'public', 'data', 'v5')
+// 沙箱/只读环境下可用 --out 指定替代输出目录（例如写入临时目录后再拷回仓库）。
+const OUT = arg('--out') || join(ROOT, 'public', 'data', 'v5')
 const CACHE = join(ROOT, '.cache', 'gamedata')
 const BUILDING_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/building_data.json'
 const CHARS_URL = 'https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/character_table.json'
@@ -109,43 +111,6 @@ function isConditional(desc) {
   return /当|若|每有|每名|每点|如果|存在|满足|心情.{0,6}以下|达到|配合|一起进驻|暖机|累积/.test(s)
 }
 
-function effectsOf(skill, rawDesc) {
-  const desc = clean(rawDesc)
-  const effects = []
-  if (Number(skill.percent || 0) > 0) {
-    effects.push({ type: 'efficiency', target: skill.room === 'DORMITORY' ? 'dormitory' : 'room', value: Number(skill.percent), unit: 'percent' })
-  }
-  if (Number(skill.orderLimit || 0) > 0) {
-    effects.push({ type: 'orderLimit', target: 'room', value: Number(skill.orderLimit), unit: 'orders' })
-  }
-  if (Number(skill.capacity || 0) > 0) {
-    effects.push({ type: 'capacity', target: 'room', value: Number(skill.capacity), unit: 'slots' })
-  }
-  const mood = Number(skill.mood || 0)
-  if (mood > 0) {
-    const type = /恢复/.test(desc) ? 'moodRecovery' : /消耗/.test(desc) ? 'moodCost' : 'mood'
-    const effect = {
-      type,
-      target: /控制中枢内/.test(desc) ? 'control'
-        : /宿舍内/.test(desc) ? 'dormitory'
-          : /其他设施/.test(desc) ? 'otherFacilities'
-            : 'room',
-      value: Math.abs(mood),
-      unit: 'perHour',
-    }
-    const faction = rawDesc.match(/每个<(?:\$|@)?cc\.g\.([a-z0-9_]+)>/)
-    if (faction) {
-      effect.per = 'factionMember'
-      effect.factionId = faction[1]
-    }
-    if (skill.conditional) effect.conditional = true
-    effects.push(effect)
-  }
-  if (Number(skill.flat || 0) > 0 && !mood) {
-    effects.push({ type: 'flat', target: 'room', value: Number(skill.flat), unit: 'flat' })
-  }
-  return effects
-}
 
 function normalizeRoom(room) { return room || null }
 
@@ -155,6 +120,8 @@ const charTable = await loadLocalOrFetch('character_table.json', CHARS_URL)
 const buffs = building.buffs || {}
 const characters = {}
 let skillCount = 0
+let reviewCount = 0
+const reviewList = []
 for (const [charId, entry] of Object.entries(building.chars || {})) {
   const info = charTable[charId] || {}
   const skills = []
@@ -177,6 +144,7 @@ for (const [charId, entry] of Object.entries(building.chars || {})) {
         name: buff.buffName || buff.buffId,
         desc: rawDesc,
         text: desc,
+        rawText: rawDesc,
         category: buff.buffCategory || 'FUNCTION',
         subcategory: subcategory(room, desc, buff.buffCategory),
         phase,
@@ -194,7 +162,24 @@ for (const [charId, entry] of Object.entries(building.chars || {})) {
         conditional: isConditional(desc),
         effects: [],
       })
-      skills[skills.length - 1].effects = effectsOf(skills[skills.length - 1], rawDesc)
+      const skill = skills[skills.length - 1]
+      const parsed = parseBuff(buff)
+      skill.effects = parsed.effects
+      skill.text = parsed.text
+      skill.manualReview = parsed.manualReview
+      // 旧字段兼容：由 effects 反推，保证 percent/mood/orderLimit/capacity 与结构化结果一致
+      const score = effectScore(skill)
+      skill.percent = Number(score.percent.toFixed(4))
+      skill.mood = Number(score.mood.toFixed(4))
+      skill.orderLimit = score.orderLimit
+      skill.capacity = score.capacity
+      skill.value = skill.percent || (skill.flat > 0 ? skill.flat : 0)
+      skill.stacking = parsed.effects.some((e) => e.stacking === 'max') ? 'max' : 'stack'
+      skill.conditional = parsed.effects.some((e) => e.condition) || isConditional(desc)
+      if (parsed.manualReview) {
+        reviewCount += 1
+        reviewList.push({ charId, char: info.name || charId, buffId: buff.buffId, room, name: buff.buffName || buff.buffId, text: parsed.text, reason: parsed.manualReview })
+      }
       skillCount += 1
     }
   }
@@ -271,8 +256,43 @@ const layouts = [
 
 mkdirSync(OUT, { recursive: true })
 mkdirSync(join(OUT, '..'), { recursive: true })
+// —— effects 审核统计
+const typeCount = {}
+const targetCount = {}
+const factionIds = new Set()
+let effectTotal = 0
+let skillsWithEffects = 0
+for (const c of Object.values(characters)) {
+  for (const sk of c.skills) {
+    if (!Array.isArray(sk.effects)) continue
+    if (sk.effects.length) skillsWithEffects += 1
+    effectTotal += sk.effects.length
+    for (const e of sk.effects) {
+      typeCount[e.type] = (typeCount[e.type] || 0) + 1
+      if (e.target) targetCount[e.target] = (targetCount[e.target] || 0) + 1
+      if (e.factionId) factionIds.add(e.factionId)
+    }
+  }
+}
+
 writeFileSync(join(OUT, 'operators.json'), JSON.stringify({
-  meta: { version: '2026-10-20', effectSchemaVersion: 1, source: 'Kengxxiao/ArknightsGameData zh_CN', characters: Object.keys(characters).length, skills: skillCount },
+  meta: {
+    version: '2026-10-20',
+    effectSchemaVersion: 2,
+    source: 'Kengxxiao/ArknightsGameData zh_CN',
+    characters: Object.keys(characters).length,
+    skills: skillCount,
+    effectTypes: EFFECT_TYPES,
+    audit: {
+      skillsWithEffects,
+      skillsWithoutEffects: skillCount - skillsWithEffects,
+      effectTotal,
+      manualReview: reviewCount,
+      typeCount,
+      targetCount,
+      factionIds: [...factionIds].sort(),
+    },
+  },
   characters,
 }, null, 0))
 writeFileSync(join(OUT, 'facilities.json'), JSON.stringify({
@@ -300,6 +320,11 @@ writeFileSync(join(OUT, 'combos.json'), JSON.stringify({
 }, null, 0))
 
 console.log('operators', Object.keys(characters).length, 'skills', skillCount)
+console.log('effects', effectTotal, 'skillsWithEffects', skillsWithEffects, 'manualReview', reviewCount)
+if (reviewList.length) {
+  console.log('--- manualReview ---')
+  for (const x of reviewList) console.log('  ' + x.room + '|' + x.char + '|' + x.buffId + '|' + x.text)
+}
 console.log('rooms', Object.keys(rooms).length, 'formulas', manufactFormulas.length, workshopFormulas.length)
 console.log('combos', combos.length, 'unresolved', unresolved.length)
 console.log('output', OUT)
