@@ -231,6 +231,8 @@ function hasEffectAfter(segments, si, roomType) {
     const next = segments[i]
     if (isPreamble(next.text)) continue
     if (findMetric(next.text, roomType)) return true
+    // 「当与X一起工作时，更容易获得线索」：后半句是 clueBias 效果，也算后继效果
+    if (CLUE_BIAS_RE.test(next.text)) return true
     return CONTINUATION_HEAD_RE.test(next.text.trim()) || /额外/.test(next.text)
   }
   return false
@@ -414,6 +416,8 @@ const CONDITION_RULES = [
   [/若(外势|实地)大于等于(外势|实地)/, (m) => ({ type: 'resourceCompare', left: m[1], right: m[2], op: 'gte' })],
   [/若(外势|实地)大于(外势|实地)/, (m) => ({ type: 'resourceCompare', left: m[1], right: m[2], op: 'gt' })],
   [/只有自身处于工作状态|会客室内只有自身/, () => ({ type: 'aloneInRoom' })],
+  // 「如会客室没有另一干员则不提升」：需要会客室内除自身外还有人
+  [/没有另一干员则不提升/, () => ({ type: 'needsOtherOperatorInRoom' })],
   [/处于线索交流时|线索交流时/, () => ({ type: 'clueExchange' })],
   [/如果自身为满心情|自身为满心情/, () => ({ type: 'selfMoodFull' })],
   [/心情未满/, () => ({ type: 'targetMoodNotFull' })],
@@ -800,23 +804,60 @@ function parseSegment(buff, seg, allTokens, ctx) {
 // 会客室线索倾向：没有数值，只有派系偏向
 const CLUE_BIAS_RE = /更容易获得(.+?)线索|增加(.+?)线索的出现概率/
 
+// 线索派系表（《罗德岛基建·会客室》7 份线索的固定编号）：
+// 1 莱茵生命 2 企鹅物流 3 黑钢 4 乌萨斯学生自治团 5 格拉斯哥帮 6 喀兰贸易 7 罗德岛制药
+// 说明：原文中这些派系名是普通关键词（<@cc.kw>），没有 <$cc.g.*> 标记，
+// 因此无法从原始数据取出 factionId；clueNo 才是这里唯一可靠的编号。
+const CLUE_FACTIONS = [
+  { no: 1, id: 'rh', names: ['莱茵生命'] },
+  { no: 2, id: 'penguin', names: ['企鹅物流'] },
+  { no: 3, id: 'bs', names: ['黑钢国际', '黑钢'] },
+  { no: 4, id: 'ussg', names: ['乌萨斯学生自治团'] },
+  { no: 5, id: 'glasgow', names: ['格拉斯哥帮'] },
+  { no: 6, id: 'karlan', names: ['喀兰贸易'] },
+  { no: 7, id: 'rhodes', names: ['罗德岛制药'] },
+]
+
+/** 按中文派系名查线索编号与派系 id，查不到返回 null。 */
+function clueFactionOf(name) {
+  if (!name) return null
+  const hit = CLUE_FACTIONS.find((f) => f.names.some((n) => name.includes(n)))
+  return hit ? { no: hit.no, id: hit.id } : null
+}
+
 function parseMeetingExtra(buff, t) {
   const m = t.plain.match(CLUE_BIAS_RE)
   if (!m) return null
+  const plain = stripMarkers(t.plain).trim()
   const factionTok = t.tokens.find((x) => x.kind === 'faction')
-  return {
+  // 「更容易获得线索板上尚未拥有的线索」里的「尚未拥有的」是线索范围，不是阵营名。
+  // 阵营只能来自派系表或 <$cc.g.*> 标记，否则会把整句中文塞进 faction 字段。
+  const target = /尚未拥有|没有的|未持有|未获得/.test(m[0])
+    ? 'notOwned'
+    : (/已经拥有|已拥有|已持有/.test(m[0]) ? 'owned' : undefined)
+  // 「尚未拥有的」「已经拥有的」是线索范围（clueTarget），不是派系名，不能拿来查派系表。
+  const nameInText = stripMarkers(m[1] || m[2] || '').trim() || null
+  const rawName = factionTok ? factionTok.text : (target ? null : nameInText)
+  const clue = clueFactionOf(rawName)
+  const effect = {
     type: 'clueBias',
     room: 'MEETING',
-    target: buff.roomType === 'CONTROL' ? 'meeting' : 'meeting',
+    target: 'meeting',
     value: 1,
     unit: 'flag',
-    faction: (m[1] || m[2] || '').trim(),
-    factionId: factionTok ? factionTok.id : null,
-    condition: { type: 'workTimeAffectsProbability', text: stripMarkers(t.plain).trim() },
+    clueTarget: target,
+    clueNo: clue ? clue.no : undefined,
+    factionId: clue ? clue.id : (factionTok ? factionTok.id : undefined),
+    factionName: rawName || undefined,
     stacking: 'stack',
     source: buff.buffId,
-    text: stripMarkers(t.plain).trim(),
+    text: plain,
   }
+  // 只有原文明确写了「工作时长影响概率」才挂该条件
+  if (/工作时长影响概率|工作时长和招募位影响概率/.test(plain)) {
+    effect.condition = { type: 'workTimeAffectsProbability', text: plain }
+  }
+  return effect
 }
 
 // 加工站减免龙门币 / 保底副产物
@@ -1085,9 +1126,12 @@ function fallbackEffects(buff, t) {
   // 会客室：非某派系线索时提升该派系线索概率
   const flag = plain.match(/不是(.+?)时，则额外增加(.+?)线索的出现概率/)
   if (flag) {
+    const clue = clueFactionOf(flag[2].trim())
     return [{ type: 'clueBias', room: 'MEETING', target: 'meeting', value: 1, unit: 'flag',
-      faction: flag[2].trim(), factionId: faction ? faction.id : null,
-      condition: { type: 'clueNotFaction', text: stripMarkers(plain).trim() },
+      clueNo: clue ? clue.no : null,
+      factionId: clue ? clue.id : (faction ? faction.id : null),
+      factionName: flag[2].trim(),
+      condition: { type: 'clueNotFaction', clueNo: clue ? clue.no : null, text: stripMarkers(plain).trim() },
       stacking: 'stack', source: buff.buffId, text: stripMarkers(plain).trim() }]
   }
   // 加工站：T3 副产品必定为某材料
@@ -1105,9 +1149,21 @@ function fallbackEffects(buff, t) {
   // 会客室：连续消耗心情后必定获得某派系线索
   const must = plain.match(/连续消耗超过\s*(\d+)\s*点心情下一次必定获得(.+?)的线索/)
   if (must) {
+    const clue = clueFactionOf(must[2].trim())
+    // 「如果会客室内只有自身处于工作状态时」是独立触发条件，不能与心情消耗条件互相覆盖。
+    const alone = /只有自身处于工作状态/.test(plain)
+    const condition = {
+      type: 'afterMoodSpent',
+      threshold: Number(must[1]),
+      text: stripMarkers(plain).trim(),
+    }
+    if (alone) condition.extra = [{ type: 'aloneInRoom', text: '会客室内只有自身处于工作状态' }]
     return [{ type: 'clueBias', room: 'MEETING', target: 'meeting', value: 1, unit: 'flag',
-      faction: must[2].trim(), factionId: faction ? faction.id : null,
-      condition: { type: 'afterMoodSpent', threshold: Number(must[1]), text: stripMarkers(plain).trim() },
+      clueNo: clue ? clue.no : null,
+      factionId: clue ? clue.id : (faction ? faction.id : null),
+      factionName: must[2].trim(),
+      guarantee: true,
+      condition,
       stacking: 'stack', source: buff.buffId, text: stripMarkers(plain).trim() }]
   }
   // 训练室：武道累积后瞬间完成
@@ -1150,10 +1206,13 @@ export function parseBuff(buff) {
     // “提升会客室内干员所属派系的线索倾向效果”
     if (/线索倾向效果|线索倾向/.test(seg.text) && !findMetric(seg.text, buff.roomType)) {
       const level = /小幅提升/.test(seg.text) ? 'small' : 'normal'
+      // 「（如会客室没有另一干员则不提升）」在括号里，可能被切分丢掉，用整段原文兜底识别。
+      const cond = detectCondition(seg.text)
+        || (/没有另一干员则不提升/.test(t.plain) ? { type: 'needsOtherOperatorInRoom' } : null)
       effects.push({
         type: 'clueBias', room: 'MEETING', target: 'meeting', value: 1, unit: 'flag',
         level, scope: 'roomMemberFaction',
-        condition: detectCondition(seg.text),
+        condition: cond || undefined,
         stacking: 'stack', source: buff.buffId, text: stripMarkers(seg.text).trim(),
       })
       pendingCondition = null

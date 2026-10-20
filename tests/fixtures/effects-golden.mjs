@@ -261,4 +261,56 @@ export const CASES = [
     note: '发电站无人机充能 +10%',
     expect: [{ type: 'droneCharge', value: 10, unit: 'percent' }],
   },
+
+  // ── 会客室线索派系（clueNo / clueTarget / guarantee） ──────────────────
+  {
+    buffId: 'meet_flag[010]',
+    note: '山·哥伦比亚史：线索不是莱茵生命时增加莱茵生命线索概率 → clueNo=1',
+    expectLength: 1,
+    expect: [{
+      type: 'clueBias', clueNo: 1, factionId: 'rh', factionName: '莱茵生命',
+      condition: { type: 'clueNotFaction', clueNo: 1 },
+    }],
+  },
+  {
+    buffId: 'meet_flag[060]',
+    note: '极境·插旗：罗德岛制药是第 7 号线索（原文只有普通关键词，没有阵营标记）',
+    expectLength: 1,
+    expect: [{ type: 'clueBias', clueNo: 7, factionId: 'rhodes', factionName: '罗德岛制药' }],
+  },
+  {
+    buffId: 'meet_spd_notOwned[000]',
+    note: '晓歌：更容易获得尚未拥有的线索——「尚未拥有的」是线索范围，不能当成派系名',
+    expect: [{
+      _any: true, type: 'clueBias', clueTarget: 'notOwned',
+      factionName: null, clueNo: null,
+    }],
+  },
+  {
+    buffId: 'meet_spd&condChar_mustget[000]',
+    note: '霍尔海雅：独自工作 + 连续消耗 16 点心情 → 必定获得第 1 号线索，两个条件都要在',
+    expectLength: 1,
+    expect: [{
+      type: 'clueBias', clueNo: 1, guarantee: true,
+      condition: { type: 'afterMoodSpent', threshold: 16, 'extra.0.type': 'aloneInRoom' },
+    }],
+  },
+  {
+    buffId: 'meet_spd&team[010]',
+    note: '塞雷娅·守望者：搜集速度 +10% 与莱茵生命线索倾向是两条独立效果',
+    expectLength: 2,
+    expect: [
+      { type: 'clueSpeed', value: 10 },
+      { type: 'clueBias', clueNo: 1, condition: { type: 'workTimeAffectsProbability' } },
+    ],
+  },
+  {
+    buffId: 'meet_team&char[000]',
+    note: '哈洛德：提升会客室内另一干员所属派系线索倾向，没有另一干员则不提升',
+    expectLength: 1,
+    expect: [{
+      type: 'clueBias', scope: 'roomMemberFaction',
+      condition: { type: 'needsOtherOperatorInRoom' },
+    }],
+  },
 ]
