@@ -2137,6 +2137,17 @@ export function parseBuff(buff) {
   effects.length = 0
   effects.push(...dedup)
 
+  // 「手性屈光体或重相位对映体」若以 A/B 复合值存在，消费方做等值匹配会失效；
+  // 在这里拆成每个产物一条（其余字段相同），保证 product 永远是单值。
+  const expanded = []
+  for (const e of effects) {
+    if (typeof e.product === 'string' && e.product.includes('/')) {
+      for (const p of e.product.split('/')) expanded.push({ ...e, product: p })
+    } else expanded.push(e)
+  }
+  effects.length = 0
+  effects.push(...expanded)
+
   // 「除自身以外」只对"作用于一批干员"的效果有意义。
   // clueBias 之类的倾向/标记效果没有"排除自身"的概念，用整句正则会把无关效果一起传染。
   const NO_EXCLUDE_SELF_TYPES = new Set(['clueBias', 'fixedOrder', 'resetOthers', 'specialBonus', 'unknown'])
@@ -2171,6 +2182,18 @@ export function parseBuff(buff) {
     // 「每差 N 笔」的计数已由 per:"orderGap"/perValue 表达；同义 condition 留着会被下游当成
     // 触发门，把「每差 1 笔 +4%」读成「差 ≥1 才 +4%」。
     if (e.per === 'orderGap' && e.condition && e.condition.type === 'orderGap') delete e.condition
+    // 「如果该宿舍内有其他干员，则每人额外为自身恢复+0.05」：数的是别人，不含自己
+    if (e.per === 'operator' && e.condition && e.condition.type === 'otherMembersInRoom') e.excludeSelf = true
+    // 「不视作违约订单」：该类订单不属于违约订单，需要标志位，否则下游按 text 猜
+    if (/不视作违约订单/.test(stripMarkers(t.plain))
+      && (e.type === 'fixedOrder' || e.type === 'orderValue' || e.type === 'orderLimit')) {
+      e.notDefaultOrder = true
+    }
+    // 「条件的资源名」也要带 resourceId（反查 BD_NAMES），否则同类条件两条写法不一致
+    if (e.condition && e.condition.resourceName && !e.condition.resourceId) {
+      const bdId = Object.keys(BD_NAMES).find((k) => BD_NAMES[k] === e.condition.resourceName)
+      if (bdId) e.condition.resourceId = bdId
+    }
     // 条件里的 null（例如「工作场所」查不到具体房间）也要清掉，避免下游把 null 当成"指定了房间"
     if (e.condition) for (const k of Object.keys(e.condition)) if (e.condition[k] === null || e.condition[k] === undefined) delete e.condition[k]
     for (const k of Object.keys(e)) if (e[k] === null || e[k] === undefined) delete e[k]

@@ -158,8 +158,12 @@ export const CASES = [
   },
   {
     buffId: 'workshop_formula_device[080]',
-    note: '加工手性屈光体或重相位对映体：两种材料都要覆盖，不能只取第一个',
-    expect: [{ type: 'workshopByproduct', product: '手性屈光体/重相位对映体' }],
+    note: '加工手性屈光体或重相位对映体：拆成每个产物一条，product 永远是单值',
+    expectLength: 2,
+    expect: [
+      { _any: true, type: 'workshopByproduct', value: 90, product: '手性屈光体' },
+      { _any: true, type: 'workshopByproduct', value: 90, product: '重相位对映体' },
+    ],
   },
   {
     buffId: 'workshop_formula_lolxh[000]',

@@ -81,7 +81,8 @@
 | `char` | 与 `target: "char"` 配对：效果只作用于该名干员（例：丰川祥子、阿米娅） |
 | `value` | 数值。心情类恒为正、方向由 type 表达；orderLimit 可正可负；flag 类为 1 |
 | `unit` | percent / perHour / orders / slots / count / mood / probability / points / flat / flag |
-| `product` | 产物筛选：贵金属 / 作战记录 / 源石 / 技巧概要 / 精英材料 / 基建材料 / 芯片 / 晶体 / 任意类材料 / 装置 / 异铁 / 异铁组 / 聚酸酯 / 源岩 / 酮凝集 / 炽合金块 / 手性屈光体 / 重相位对映体（「A 或 B」记为 `A/B`，消费方需按 `/` 拆分） |
+| `product` | 产物筛选：贵金属 / 作战记录 / 源石 / 技巧概要 / 精英材料 / 基建材料 / 芯片 / 晶体 / 任意类材料 / 装置 / 异铁 / 异铁组 / 聚酸酯 / 源岩 / 酮凝集 / 炽合金块 / 手性屈光体 / 重相位对映体（**保证单值**：「A 或 B」已拆成两条效果） |
+| `notDefaultOrder` | 「（不视作违约订单）」：该类订单不属于违约订单 |
 | `per` | 叠加单位：factionMember / tagMember / operator / resourcePoint / powerStation / tradingStation / hireSlot（**不含初始招募位**）/ goldLine / token / skillClass（配 `skillClass` 类名）/ capacity / orderLimit / droneCap / efficiency / roomLevel / formulaType（每种配方类别）/ facilityCount（每间满足条件的设施）/ accumulate / **orderCount（每笔订单）/ orderGap（订单数与上限的差额）** |
 | `skillClass` | 与 `per: "skillClass"` 配对：标准化 / 莱茵科技 / 红松骑士团 / 金属工艺 |
 | `exclude` | 计量基数要排除的部分：`facilityCountBonus`（「不包含根据设施数量提供加成的生产力」） |
