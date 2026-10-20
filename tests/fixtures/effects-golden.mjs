@@ -176,8 +176,11 @@ export const CASES = [
   },
   {
     buffId: 'workshop_formula_cost&dorm[000]',
-    note: '配方阈值4 与「宿舍每10名心情<12干员」并存，且按人数叠加',
-    expect: [{ type: 'workshopMoodCost', value: 1, per: 'operator', condition: { type: 'recipeMoodCost', threshold: 4, extra: '宿舍内每有10名心情12以下的干员时' } }],
+    note: '配方阈值4 与「宿舍每10名心情<12干员」并存，且按人数叠加（分母 10 不能丢成 1）',
+    expect: [{
+      type: 'workshopMoodCost', value: 1, per: 'operator', perValue: 10,
+      condition: { type: 'recipeMoodCost', threshold: 4, extra: '宿舍内每有10名心情12以下的干员时' },
+    }],
   },
   {
     buffId: 'control_clue_cost&faction[990]',
@@ -456,6 +459,21 @@ export const CASES = [
     buffId: 'meet_spd_notOwned&exchange[000]',
     note: '骋风：「处于线索交流时」只在线索交流期间生效，条件不能丢',
     expect: [{ _any: true, type: 'clueBias', clueTarget: 'notOwned', condition: { type: 'clueExchange' } }],
+  },
+  // ── 回归护栏（第三轮复验确认过的三条） ─────────────────────────────
+  {
+    buffId: 'control_token_prod_spd[000]',
+    note: '作业平台是装置不是干员：必须用 tokenCountAtLeast，不能塞进 charInRoom.char',
+    expectLength: 1,
+    expect: [{ type: 'productivity', condition: { type: 'tokenCountAtLeast' } }],
+  },
+  {
+    buffId: 'meet_spd&bd[999]',
+    note: '「当与虎狼丸进驻会客室一起工作时，更容易获得未拥有线索」：条件要挂在 clueBias 上',
+    expect: [{
+      _any: true, type: 'clueBias',
+      condition: { type: 'withCharInRoom', char: '虎狼丸' },
+    }],
   },
   {
     buffId: 'power_rec_spd_P[001]',

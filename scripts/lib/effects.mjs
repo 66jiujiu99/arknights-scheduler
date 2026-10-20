@@ -411,6 +411,10 @@ function detectPer(text, segTokens) {
 }
 
 const CONDITION_RULES = [
+  // 「如果有<@cc.vup>2</>台以上<@cc.tag.op>作业平台</>进驻在发电站」：
+  // 标记会把数字和「台以上」隔开，必须最先判定，否则会被下面的 charInRoom 抢走，
+  // 把「有2台以上作业平台」当成干员名塞进 char 字段。
+  [/\d+\s*(?:<[^>]*>)?\s*台以上/, (m) => ({ type: 'tokenCountAtLeast', threshold: Number((String(m[0]).match(/(\d+)/) || [])[1] || 0) })],
   [/心情消耗为\s*(\d+)\s*(?:以上)?/, (m) => ({ type: 'recipeMoodCost', threshold: Number(m[1]) })],
   [/当自身心情大于\s*(\d+)/, (m) => ({ type: 'selfMoodAbove', threshold: Number(m[1]) })],
   [/自身心情大于\s*(\d+)/, (m) => ({ type: 'selfMoodAbove', threshold: Number(m[1]) })],
@@ -452,7 +456,7 @@ const CONDITION_RULES = [
   [/每\d+次加工没有产出副产品/, () => ({ type: 'afterNoByproduct' })],
   [/心情\d+以下的干员/, () => ({ type: 'dormLowMoodCount' })],
   [/完整协助完成\d+次专精训练|协助一名干员训练时长达\d+小时/, () => ({ type: 'assistSession' })],
-  [/如果有\d+台以上/, () => ({ type: 'tokenCountAtLeast' })],
+
 ]
 
 // “每小时”“时”这类是时间单位或从句助词，不是条件触发词。
@@ -1304,7 +1308,11 @@ export function parseBuff(buff) {
     }
 
     const bias = parseMeetingExtra(buff, t)
-    if (bias && CLUE_BIAS_RE.test(seg.text) && !findMetric(seg.text, buff.roomType)) { effects.push(bias); pendingCondition = null; continue }
+    if (bias && CLUE_BIAS_RE.test(seg.text) && !findMetric(seg.text, buff.roomType)) {
+      // 「当与虎狼丸进驻会客室一起工作时，更容易获得未拥有线索」：条件在前一段从句里
+      applyPending(bias, pendingCondition)
+      effects.push(bias); pendingCondition = null; continue
+    }
 
     const ws = buff.roomType === 'WORKSHOP' ? parseWorkshopExtra(buff, t) : null
     if (ws) { effects.push(ws); pendingCondition = null; continue }
@@ -1530,7 +1538,10 @@ export function parseBuff(buff) {
   // 从生效文本/条件文本里回捞（"每有4条赤金生产线" → perValue=4）
   for (const e of effects) {
     if (e.per && e.perValue == null) {
-      const src = String(e.text || "") + " " + String((e.condition && e.condition.text) || "")
+      const extraTxt2 = e.condition && e.condition.extra
+        ? (Array.isArray(e.condition.extra) ? e.condition.extra.map((x) => (x && x.text) || '').join(' ') : String(e.condition.extra))
+        : ''
+      const src = String(e.text || '') + ' ' + String((e.condition && e.condition.text) || '') + ' ' + extraTxt2
       const m = src.match(/每(?:有)?\s*(\d+(?:\.\d+)?)/)
       if (m) e.perValue = Number(m[1])
     }
@@ -1562,10 +1573,16 @@ export function parseBuff(buff) {
   // 早期实现把 per=operator 当噪声丢掉，导致这类效果只算一份。
   for (const e of effects) {
     if (e.per) continue
-    const src = String(e.text || '') + ' ' + String((e.condition && e.condition.text) || '')
-    if (/每名|每人/.test(src) && !/每名干员$/i.test('')) {
+    const extraTxt = e.condition && e.condition.extra
+      ? (Array.isArray(e.condition.extra) ? e.condition.extra.map((x) => (x && x.text) || '').join(' ') : String(e.condition.extra))
+      : ''
+    const src = String(e.text || '') + ' ' + String((e.condition && e.condition.text) || '') + ' ' + extraTxt
+    if (/每名|每人/.test(src)) {
       e.per = 'operator'
-      if (e.perValue == null) e.perValue = 1
+      if (e.perValue == null) {
+        const m = src.match(/每(?:有)?\s*(\d+)/)
+        e.perValue = m ? Number(m[1]) : 1
+      }
     }
   }
 
