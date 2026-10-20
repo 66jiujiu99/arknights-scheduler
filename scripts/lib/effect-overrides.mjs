@@ -32,19 +32,19 @@ export const EFFECT_OVERRIDES = {
 
   // 「每5%生产力，额外提供5%生产力，最多提供40%生产力」
   'manu_prod_spd_variable2[000]': {
-    note: '每5%效率额外+5%生产力，最多+40%；原解析多出一条 value=40 会被重复累加',
+    note: '每5%效率额外+5%生产力，最多+40%；计量基数须排除「按设施数量提供的加成」',
     effects: [
-      { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', target: 'room', value: 5, per: 'efficiency', perValue: 5, cap: 40, stacking: 'stack' },
+      { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', target: 'room', value: 5, per: 'efficiency', perValue: 5, cap: 40, exclude: 'facilityCountBonus', stacking: 'stack' },
     ],
   },
 
   // 「提升16格以下的，每格仓库容量提供1%生产力；提升大于16格的，每格仓库容量提供3%生产力」
   // 被作用的是「生产力」，不是「仓库容量」；两档分别对应 16 格以下/以上。
   'manu_prod_spd_variable3[000]': {
-    note: '两档生产力加成，16格以下 1%/格，大于16格 3%/格',
+    note: '两档生产力加成，16格以下 1%/格，大于16格 3%/格；原文「无法与回收利用叠加，且优先生效」→ 取最高',
     effects: [
-      { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', target: 'room', value: 1, per: 'capacity', condition: { type: 'capacityBelow', threshold: 16 }, stacking: 'stack' },
-      { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', target: 'room', value: 3, per: 'capacity', condition: { type: 'capacityAbove', threshold: 16 }, stacking: 'stack' },
+      { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', target: 'room', value: 1, per: 'capacity', condition: { type: 'capacityBelow', threshold: 16 }, stacking: 'max' },
+      { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', target: 'room', value: 3, per: 'capacity', condition: { type: 'capacityAbove', threshold: 16 }, stacking: 'max' },
     ],
   },
 
@@ -116,6 +116,82 @@ export const EFFECT_OVERRIDES = {
         condition: { type: 'trainToLevel', level: 1, extra: [{ type: 'assistSession' }] },
         stacking: 'stack',
       },
+    ],
+  },
+
+  // 「控制中枢内每个鲤氏侦探事务所干员**可使该派系干员额外恢复心情**，同时每人可使控制中枢内
+  // 所有干员的心情每小时恢复+0.2」：前半句在原始数据里完全没有数值（概念型加成），
+  // 不落一条 effect 下游会以为它不存在。
+  // 「使心情未满的宿舍成员，平均分配到**总计**每小时心情恢复+0.8的加成」：
+  // +0.8 是全宿舍的总额，按心情未满的人数均摊，不是每人 +0.8。
+  // 只有 distribution 字段能表达这件事，否则排班必然高估。
+  'dorm_rec_all&single[000]': {
+    note: '0.8 为宿舍总额，需在心情未满成员间均摊（distribution: average）',
+    effects: [
+      {
+        type: 'moodRecovery', room: 'DORMITORY', unit: 'perHour', target: 'dormitory', value: 0.8,
+        distribution: 'average', stacking: 'maxPerTarget',
+        condition: { type: 'targetMoodNotFull' },
+      },
+    ],
+  },
+
+  // 「**推进之王**对该宿舍中格拉斯哥帮干员恢复效果额外+0.3」：恢复量只在推进之王
+  // 也在该宿舍时才存在，主语不能只留在 text 里，否则这条 +0.3 变成常驻。
+  'dorm_rec_toone[000]': {
+    note: '推进之王须同宿舍才生效，作用对象是格拉斯哥帮干员',
+    effects: [
+      {
+        type: 'moodRecovery', room: 'DORMITORY', unit: 'perHour', target: 'dormitory', value: 0.3,
+        factionId: 'glasgow', factionName: '格拉斯哥帮',
+        condition: { type: 'charInRoom', char: '推进之王', room: 'DORMITORY' },
+        stacking: 'stack',
+      },
+    ],
+  },
+
+  // 「当与丰川祥子一起进驻控制中枢时，**丰川祥子**的心情每小时恢复+0.1」：
+  // 受益人是点名的那名干员，不是中枢全体。target=char 就是为这类句子准备的。
+  'control_dorm_rec2[000]': {
+    note: '第 2 条只恢复丰川祥子本人（target=char），第 1 条是全宿舍',
+    effects: [
+      { type: 'moodRecovery', room: 'CONTROL', unit: 'perHour', target: 'allDormitory', value: 0.05, stacking: 'max' },
+      {
+        type: 'moodRecovery', room: 'CONTROL', unit: 'perHour', target: 'char', char: '丰川祥子', value: 0.1,
+        condition: { type: 'withCharInRoom', char: '丰川祥子', room: 'CONTROL' }, stacking: 'stack',
+      },
+    ],
+  },
+
+  // 「当与丰川祥子一起进驻控制中枢时，**丰川祥子**心情每小时消耗+0.05」：
+  // 额外消耗落在点名的干员身上，不是中枢全体。
+  'control_mp&meet_spd[000]': {
+    note: '心情消耗 +0.05 只加在丰川祥子身上；线索搜集速度 +5% 仍是会客室全体',
+    effects: [
+      {
+        type: 'moodCost', room: 'CONTROL', unit: 'perHour', target: 'char', char: '丰川祥子', value: 0.05,
+        condition: { type: 'withCharInRoom', char: '丰川祥子', room: 'CONTROL' }, stacking: 'stack',
+      },
+      {
+        type: 'clueSpeed', room: 'MEETING', unit: 'percent', target: 'meeting', value: 5,
+        condition: { type: 'withCharInRoom', char: '丰川祥子', room: 'CONTROL' }, stacking: 'max',
+      },
+    ],
+  },
+
+  // 「自身和**阿米娅**心情每小时恢复+0.05」：两个人各一份，只写 self 会把阿米娅那半句丢掉。
+  'control_mp_cost_double[000]': {
+    note: '自身与阿米娅各恢复 +0.05，拆成 self + char 两条',
+    effects: [
+      { type: 'moodRecovery', room: 'CONTROL', unit: 'perHour', target: 'self', value: 0.05, condition: { type: 'withCharInRoom', char: '阿米娅', room: 'CONTROL' }, stacking: 'stack' },
+      { type: 'moodRecovery', room: 'CONTROL', unit: 'perHour', target: 'char', char: '阿米娅', value: 0.05, condition: { type: 'withCharInRoom', char: '阿米娅', room: 'CONTROL' }, stacking: 'stack' },
+    ],
+  },
+  'control_mp_cost_double[001]': {
+    note: '同上，+0.1',
+    effects: [
+      { type: 'moodRecovery', room: 'CONTROL', unit: 'perHour', target: 'self', value: 0.1, condition: { type: 'withCharInRoom', char: '阿米娅', room: 'CONTROL' }, stacking: 'stack' },
+      { type: 'moodRecovery', room: 'CONTROL', unit: 'perHour', target: 'char', char: '阿米娅', value: 0.1, condition: { type: 'withCharInRoom', char: '阿米娅', room: 'CONTROL' }, stacking: 'stack' },
     ],
   },
 

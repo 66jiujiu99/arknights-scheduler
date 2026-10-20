@@ -104,6 +104,9 @@ const BD_NAMES = {
   'bd.costdrop': '心情落差',
 }
 
+// 当前正在解析的 buff 的 token 表（parseBuff 里赋值），供条件身份字段使用。
+let CURRENT_TOKENS = null
+
 export const EFFECT_TYPES = [
   'productivity', 'orderEfficiency', 'orderLimit', 'capacity',
   'moodRecovery', 'moodCost', 'moodCostReduction', 'moodCostReset', 'moodRecoveryBlock', 'moodExchange',
@@ -139,7 +142,9 @@ export function tokenize(desc) {
   let plain = ''
   let marked = ''
   const stack = []
-  const raw = String(desc || '')
+  // 原始数据有手误写成 `<<$cc.bd_b1>` 的（全库唯一一条：桑葚 hire_spd_bd_n1_n1[200]），
+  // 不纠会导致整个资源标记被吞掉、resourceId 丢失。这里做一次形态容错。
+  const raw = String(desc || '').replace(/<<\$cc\./g, '<$cc.')
 
   const closeTag = () => {
     const t = stack.pop()
@@ -221,6 +226,9 @@ function splitRaw(plain) {
 const PREAMBLE_RE = /^进驻[^，；]*?(?:时|位时)?(?:，|；|$)|^当与[^，；]*?(?:时|，)/
 
 function isPreamble(text) {
+  // 「当前订单数与订单上限每差1笔订单，则订单获取效率+4%」：前半句是条件（差额），
+  // 不是"订单上限+1"的效果，必须整段当条件处理，否则会凭空多出一条 orderLimit。
+  if (/每差\s*\d+\s*笔/.test(text) && !/效率|生产力/.test(text)) return true
   return PREAMBLE_RE.test(text.trim()) && !findMetricForPreamble(text)
 }
 
@@ -291,7 +299,9 @@ const TARGET_RULES = [
   [/每个进驻在会客室|进驻在会客室/, 'meeting', {}],
   [/进驻在宿舍和活动室以外的设施|活动室以外的设施/, 'otherFacilities', {}],
   [/每个进驻在宿舍|进驻在宿舍/, 'allDormitory', {}],
-  [/会客室内干员|会客室/, 'meeting', {}],
+  // 「会客室每级额外提供5%获取效率」里会客室只是计数来源（countScope 记录），
+  // 收益仍属本房间；写成 meeting 会把贸易站加成记到会客室头上。
+  [/会客室内干员|会客室(?!每级)/, 'meeting', {}],
   [/控制中枢内除自身以外|中枢内除自身/, 'control', { excludeSelf: true }],
   [/控制中枢内所有干员|控制中枢内所有|中枢内所有干员/, 'control', {}],
   [/其他设施内处于工作状态的干员|其他设施/, 'otherFacilities', {}],
@@ -353,7 +363,7 @@ function detectPer(text, segTokens) {
     break
   }
   if (perIdx < 0) return null
-  if (!/每\s*\d|每个|每名|每有|每间|每条|每点|每格|每架|每瓶|每产生|每级|每座|每台|每位/.test(text.slice(perIdx))) {
+  if (!/每\s*\d|每个|每名|每有|每间|每条|每点|每格|每架|每瓶|每产生|每级|每座|每台|每位|每差/.test(text.slice(perIdx))) {
     const bd = segTokens.find((t) => t.kind === 'bd')
     const faction = segTokens.find((t) => t.kind === 'faction')
     const tag = segTokens.find((t) => t.kind === 'tag')
@@ -364,8 +374,14 @@ function detectPer(text, segTokens) {
   const tag = segTokens.find((t) => t.kind === 'tag')
 
   let per = null
+  // 「其他干员提供的每10%订单获取效率使订单上限-1」：计数对象是效率，订单上限是被作用方。
+  // 「每有1笔订单就+4%」按订单笔数计数；「每差1笔订单」按差额计数。
+  // 三者都必须抢在下面按房间单位（订单上限）兜底之前。
+  if (/每\s*\d+(?:\.\d+)?%\s*订单获取效率/.test(text)) per = 'efficiency'
+  else if (/每\s*(?:有)?\s*\d*\s*笔订单/.test(text)) per = 'orderCount'
+  else if (/每差\s*\d+\s*笔/.test(text)) per = 'orderGap'
   // 「每间设施每级」是按设施等级计数，句中出现的产物名不是计数单位
-  if (/每间设施每级|宿舍每级|每级/.test(text)) per = 'roomLevel'
+  else if (/每间设施每级|宿舍每级|每级/.test(text)) per = 'roomLevel'
   // 「每个招募位」是设施槽位计数，即使句中出现特殊资源也不该退化成 resourcePoint
   else if (/招募位/.test(text)) per = 'hireSlot'
   // 「每有一间进驻精英干员的设施」按设施计数，不是按人；必须先抢在阵营判断之前。
@@ -409,8 +425,14 @@ function detectPer(text, segTokens) {
     break
   }
 
+  const skillClassTok = segTokens.find((t) => t.kind === 'skillClass')
   const out = {
     per,
+    // 「当前制造站内每个莱茵科技类技能为自身+5%」：per=skillClass 时必须说明是哪一类，
+    // 否则三条不同类名的技能解析结果完全同形，下游无法匹配。
+    skillClass: per === 'skillClass' && skillClassTok
+      ? String(skillClassTok.text).replace(/类?技能$|类$/, '').trim() || null
+      : null,
     factionId: faction ? faction.id : null,
     factionName: faction ? faction.text : null,
     tagId: tag ? tag.id : null,
@@ -427,7 +449,8 @@ const CONDITION_RULES = [
   // 标记会把数字和「台以上」隔开，必须最先判定，否则会被下面的 charInRoom 抢走，
   // 把「有2台以上作业平台」当成干员名塞进 char 字段。
   [/\d+\s*(?:<[^>]*>)?\s*台以上/, (m) => ({ type: 'tokenCountAtLeast', threshold: Number((String(m[0]).match(/(\d+)/) || [])[1] || 0) })],
-  [/心情消耗为\s*(\d+)\s*(?:以上)?/, (m) => ({ type: 'recipeMoodCost', threshold: Number(m[1]) })],
+  // 「心情消耗为N」是精确匹配，「为N以上」才是 ≥N，两者不能同形（口径决策 5）
+  [/心情消耗为\s*(\d+)\s*(以上)?/, (m) => ({ type: 'recipeMoodCost', threshold: Number(m[1]), op: m[2] ? 'gte' : 'eq' })],
   [/当自身心情大于\s*(\d+)/, (m) => ({ type: 'selfMoodAbove', threshold: Number(m[1]) })],
   [/自身心情大于\s*(\d+)/, (m) => ({ type: 'selfMoodAbove', threshold: Number(m[1]) })],
   [/当自身心情处于\s*(\d+)\s*以下|心情处于\s*(\d+)\s*以下/, (m) => ({ type: 'selfMoodBelow', threshold: Number(m[1] || m[2]) })],
@@ -489,7 +512,13 @@ const CONDITION_RULES = [
   [/^反之/, () => ({ type: 'elseBranch' })],
   // 「每有1个深海猎人干员进驻在宿舍以外的设施」
   [/每有(\d+)个(.+?)干员进驻在宿舍以外/, (m) => ({ type: 'factionInFacility', faction: m[2].trim(), threshold: Number(m[1]) })],
-  [/如果目标是(.+?)，则|如果目标是(.+?)$/, (m) => ({ type: 'targetIs', text: m[1] || m[2] })],
+  // 「如果目标是锡兰」「如果目标是萨米干员」：目标身份必须结构化，
+  // 这里先记下捕获到的名字，再按 token 判定它是具名干员/阵营/小队标签。
+  [/如果目标是(.+?)时|如果目标是(.+?)，|如果目标是(.+?)$/, (m) => ({ type: 'targetIs', targetLabel: (m[1] || m[2] || m[3] || '').trim() })],
+  // 「当前贸易站内存在格拉斯哥帮干员时」：同房间阵营条件（不是"与…一起工作"）
+  [/当前(.+?)内存在(.+?)干员时|当前(.+?)中存在(.+?)干员时/, (m) => ({
+    type: 'factionInRoom', room: ROOM_ALIASES[(m[1] || m[3] || '').trim()] || null, factionName: (m[2] || m[4] || '').trim(),
+  })],
   [/若(.+?)大于等于(.+?)，|若(.+?)大于(.+?)，/, (m) => ({ type: 'resourceCompare', left: m[1] || m[3], right: m[2] || m[4] })],
   [/每产生\d+次联络次数/, () => ({ type: 'onContact' })],
   [/每\d+次加工没有产出副产品/, () => ({ type: 'afterNoByproduct' })],
@@ -504,7 +533,7 @@ const CONDITION_RULES = [
 ]
 
 // “每小时”“时”这类是时间单位或从句助词，不是条件触发词。
-const CONDITION_TRIGGERS = /如果|若|当与|当自身|当.{1,12}时|只有|反之|达到.{0,4}小时|处于.{0,8}以下|.{0,6}以上时|小于|大于|满心情|心情未满|心情\s*\d+\s*以下|心情消耗为|线索交流时|没有进驻|下笔|每产生|次加工没有|分支为|专精技能至|进驻在|入驻|一起工作|大于等于|必定|连续消耗|技能专精/
+const CONDITION_TRIGGERS = /如果|若|当与|当自身|当.{1,12}时|只有|反之|达到.{0,4}小时|处于.{0,8}以下|.{0,6}以上时|小于|大于|满心情|心情未满|心情\s*\d+\s*以下|心情消耗为|线索交流时|没有进驻|下笔|每产生|每差|次加工没有|分支为|专精技能至|进驻在|入驻|一起工作|大于等于|必定|连续消耗|技能专精|存在.{0,12}干员时/
 
 // 从句里出现的数字（阈值/分母），保存下来避免解析时丢失。
 const CLAUSE_NUM_PATTERNS = [
@@ -535,7 +564,33 @@ function clauseNumbers(text) {
   return [...new Set(out)]
 }
 
-function detectCondition(text) {
+/**
+ * 条件里的「目标是谁」不能只留中文：如果目标是锡兰 / 萨米干员 / 莱欧斯小队干员，
+ * 分别要用 char / factionId / tagIds 表达，否则排班无法判定，等于条件信息丢失。
+ */
+function attachConditionIdentity(c, tokens) {
+  tokens = tokens || CURRENT_TOKENS
+  if (!c || !tokens || !c.type) return c
+  const label = String(c.targetLabel || c.factionName || c.char || '')
+  const faction = tokens.find((t) => t.kind === 'faction' && label.includes(t.text))
+  const tag = tokens.find((t) => t.kind === 'tag' && label.includes(t.text))
+  if (c.type === 'targetIs') {
+    if (faction) { c.factionId = faction.id; c.factionName = faction.text }
+    else if (tag) {
+      c.tagId = tag.id; c.tagName = tag.text; c.tagIds = [tag.id]; c.tagNames = [tag.text]
+    } else {
+      const name = String(c.targetLabel || '').replace(/干员$/, '').trim()
+      if (name) c.char = name
+    }
+    delete c.targetLabel
+  } else if (faction || tag) {
+    if (faction) { c.factionId = faction.id; c.factionName = faction.text }
+    else { c.tagId = tag.id; c.tagName = tag.text }
+  }
+  return c
+}
+
+function detectCondition(text, tokens) {
   // 规则一律在「去掉标记后的纯文本」上匹配：原文里数字几乎都被
   // <@cc.vup>N</> 包着，直接用带标记的串匹配「心情\d+以下」之类会全部落空，
   // 条件就被降级成 other/trigger。
@@ -548,7 +603,7 @@ function detectCondition(text) {
       const c = fn(m) || {}
       c.text = plain.trim()
       c.numbers = clauseNumbers(text)
-      return c
+      return attachConditionIdentity(c, tokens)
     }
   }
   return { type: 'other', text: plain.trim(), numbers: clauseNumbers(text) }
@@ -558,6 +613,8 @@ function detectStacking(text) {
   if (/该加成全局效果唯一|全局效果唯一|不受其它加成影响/.test(text)) return 'unique'
   if (/同种效果分别取最高/.test(text)) return 'maxPerTarget'
   if (/同种效果取最高/.test(text)) return 'max'
+  // 「（无法与回收利用叠加，且优先生效）」：与同种加成互斥取最高，不是累加
+  if (/无法与[^，；）]{0,16}叠加/.test(text)) return 'max'
   if (/有特殊比较规则|特殊叠加规则/.test(text)) return 'special'
   return 'stack'
 }
@@ -574,6 +631,13 @@ function detectCap(text) {
 // 没有别处承载。「宿舍内每有1名干员，热情值+1」的效果落在控制中枢，
 // 不显式记录就会被下游按"中枢内人数"计算。
 const COUNT_SCOPE_RULES = [
+  // 「每间宿舍每级」「训练室每级」「会客室每级」：per=roomLevel 时数的是**这些房间**的等级之和，
+  // 而效果房间往往不是它（例：制造站技能按宿舍等级加成），不记就会被读成"本房间等级"。
+  [/每间宿舍|宿舍每级/, { room: 'DORMITORY' }],
+  [/训练室每级/, { room: 'TRAINING' }],
+  [/会客室每级/, { room: 'MEETING' }],
+  // 「基建内除活动室外每间设施每级」：数的是全基建设施等级，且不含活动室（PRIVATE 不可进驻）
+  [/基建内[^，；]{0,10}每间设施每级|每间设施每级/, { baseFacilities: true, excludeRooms: ['PRIVATE'] }],
   // 「宿舍和活动室以外」：活动室（PRIVATE）在本仓库未建模、也不可进驻，
   // 能排除的只有宿舍。写成 TRAINING 会把训练室协助位也算成"以外"，是真的漏算。
   [/宿舍和活动室以外|宿舍与活动室以外/, { excludeRooms: ['DORMITORY'] }],
@@ -671,6 +735,9 @@ function detectAddition(text, segTokens) {
   return null
 }
 
+// 「心情每小时消耗±N」默认落在技能持有者身上；只有原文点名了整批目标才是房间级。
+const ROOM_WIDE_MOOD_RE = /全体|所有干员|房间内所有|每名干员的?心情|(?:贸易站|制造站|会客室|控制中枢|中枢|发电站|加工站|训练室|宿舍|基建)内(?:的)?(?:所有)?干员/
+
 // ---------------------------------------------------------------- 单段解析
 
 function parseSegment(buff, seg, allTokens, ctx) {
@@ -766,7 +833,11 @@ function parseSegment(buff, seg, allTokens, ctx) {
       value = Math.abs(Number(wc[1]))
       const th = text.match(/心情消耗为\s*(\d+)/)
       const div = /全部除以/.test(text)
-      effect.recipeMoodCostAtLeast = th ? Number(th[1]) : null
+      // 字段名要与原文口径一致：「为N以上」是 ≥N；「为N」是精确 N。
+      if (th) {
+        if (/心情消耗为\s*\d+\s*以上/.test(text)) effect.recipeMoodCostAtLeast = Number(th[1])
+        else effect.recipeMoodCostExact = Number(th[1])
+      }
       if (div) effect.subtype = 'divide'
     }
   }
@@ -795,6 +866,21 @@ function parseSegment(buff, seg, allTokens, ctx) {
   } else if (metric.type === 'moodRecovery') {
     if (value < 0) { effect.type = 'moodCost'; effect.value = Math.abs(value) }
     else effect.value = Math.abs(value)
+  }
+
+  // —— 作用对象口径（《口径决策》10）：
+  // 「心情每小时消耗±N」「为自身+N」默认都是技能持有者本人受益/受损；
+  // 只有原文写了「全体/所有干员/该宿舍内所有干员」才是房间级。
+  // 不区分会把 +0.3 的额外消耗摊给同房间所有人，或把 -0.25 的减免送出去。
+  if (effect.target === 'room' && /为自身/.test(stripMarkers(text))) effect.target = 'self'
+  if ((effect.type === 'moodCost' || effect.type === 'moodCostReduction') && effect.target === 'room'
+    && !ROOM_WIDE_MOOD_RE.test(stripMarkers(text))) {
+    effect.target = 'self'
+  }
+  // 「其他干员提供的每5%生产力（不包含根据设施数量提供加成的生产力）」：
+  // 计量基数必须排除"按设施数量给的那部分"，否则会把自己乘进去而高估。
+  if (effect.per === 'efficiency' && /不包含根据设施数量提供加成/.test(stripMarkers(text))) {
+    effect.exclude = 'facilityCountBonus'
   }
 
   // —— 订单上限：按带符号的增量存储（可正可负）
@@ -831,6 +917,17 @@ function parseSegment(buff, seg, allTokens, ctx) {
   // —— 条件
   const cond = detectCondition(text)
   if (cond) effect.condition = cond
+
+  // 「野鬃所在的制造站生产力+5%」：只作用于该干员所在的那个房间。
+  // 这种"谁在场"的条件没有触发词，detectCondition 抓不到，只能按句式补。
+  if (!effect.condition) {
+    const loc = stripMarkers(text).match(/^(.{1,8}?)所在的(制造站|贸易站|会客室|发电站|加工站|训练室|控制中枢|宿舍)/)
+    if (loc) {
+      effect.condition = {
+        type: 'charInRoom', char: loc[1].trim(), room: ROOM_ALIASES[loc[2]] || null, text: stripMarkers(text).trim(),
+      }
+    }
+  }
 
   // “其他干员提供的订单获取效率全部归零”“其他干员提供的生产力全部归零”：
   // 这是一个独立的抑制机制，必须结构化，不能只留中文。
@@ -976,7 +1073,9 @@ function parseMeetingExtra(buff, t) {
     unit: 'flag',
     clueTarget: target,
     clueNo: clue ? clue.no : undefined,
-    factionId: clue ? clue.id : (factionTok ? factionTok.id : undefined),
+    // 不写 factionId（口径决策 6）：<$cc.g.*> 是角色表的阵营命名空间
+    // （karlan=谢拉格、rhodes=罗德岛），和线索 1–7 的派系不是同一套；
+    // 线索派系只记 clueNo + factionName，下游用编号匹配。
     factionName: rawName || undefined,
     stacking: 'stack',
     source: buff.buffId,
@@ -1299,10 +1398,20 @@ function fallbackEffects(buff, t) {
       per: 'hireSlot', condition: { type: 'hireSlotPresent', text: stripMarkers(plain).trim() }, ...common }]
   }
   // 加工站：连续无副产物后恢复心情
+  // 「恢复量为对应配方所需消耗的心情」是动态量，不是 1 点：value 记次数 1，unit 记 mood，
+  // 「每2次」的间隔必须落成阈值，否则消费方不知道 2 是间隔还是恢复量。
   if (/恢复自身一次心情|没有产出副产品/.test(plain)) {
-    return [{ type: 'moodRecovery', target: 'self', value: 1, unit: 'flat',
+    const every = plain.match(/每\s*(\d+)\s*次加工没有产出副产品/)
+    return [{ type: 'moodRecovery', target: 'self', value: 1, unit: 'mood', count: 1,
       subtype: 'refundRecipeCost',
-      condition: { type: 'afterNoByproduct', text: stripMarkers(plain).trim() }, ...common }]
+      condition: {
+        type: 'afterNoByproduct',
+        threshold: every ? Number(every[1]) : null,
+        per: every ? 'noByproductCraft' : null,
+        perValue: every ? Number(every[1]) : null,
+        text: stripMarkers(plain).trim(),
+      },
+      ...common }]
   }
   // 会客室：非某派系线索时提升该派系线索概率
   const flag = plain.match(/不是(.+?)时，则额外增加(.+?)线索的出现概率/)
@@ -1424,6 +1533,9 @@ const NO_EXCLUDE_SELF_LATE = new Set(['clueBias', 'fixedOrder', 'resetOthers', '
 /** 解析单个 buff，返回 { effects, manualReview, text } */
 export function parseBuff(buff) {
   const t = tokenize(buff.description)
+  // 条件里的身份字段（具名干员/阵营/小队）要靠 token 判定，而条件在十几处零散生成，
+  // 逐个传 token 容易漏；解析是逐 buff 同步进行的，用一个当前 buff 的 token 表兜底。
+  CURRENT_TOKENS = t.tokens
   const segments = splitSegments(t.plain)
   const effects = []
   const unparsed = []
@@ -2016,10 +2128,19 @@ export function parseBuff(buff) {
     if (sibling) e.excludeSelf = true
   }
 
+  // 「（无法与回收利用叠加，且优先生效）」这类整句声明作用于该技能的所有效果：
+  // 逐段判定会漏掉不带括号的前半句，所以在这里按整条描述统一升级为取最高。
+  if (/无法与[^，；）]{0,16}叠加/.test(stripMarkers(t.plain))) {
+    for (const e of effects) if (e.stacking === 'stack') e.stacking = 'max'
+  }
+
   // 后处理：清理临时字段
   for (const e of effects) {
     delete e.signedValue
     delete e.direction
+    // clueBias 是无数值的倾向标记，「每产生1次联络次数」已由 condition.extra.onContact 承载，
+    // 再留 per/perValue 会被误读成"按干员人数叠加"。
+    if (e.type === 'clueBias') { delete e.per; delete e.perValue }
     if (e.excludeSelf === false) delete e.excludeSelf
     for (const k of Object.keys(e)) if (e[k] === null || e[k] === undefined) delete e[k]
   }

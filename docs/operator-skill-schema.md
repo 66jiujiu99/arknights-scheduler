@@ -77,11 +77,17 @@
 | --- | --- |
 | `type` | 见下节；moodRecovery 是恢复，moodCost 是消耗，moodCostReduction 是消耗减少（收益） |
 | `room` | 生效设施：MANUFACTURE / TRADING / POWER / CONTROL / DORMITORY / MEETING / HIRE / TRAINING / WORKSHOP / RECYCLE |
-| `target` | self / room / roomMembers / control / dormitory / otherFacilities / partialFacilities / allManufacture / allTrading / allDormitory / meeting / hire / trainingRoom / trainee / facilityCount |
+| `target` | self / room / roomMembers / control / dormitory / otherFacilities / partialFacilities / allManufacture / allTrading / allDormitory / meeting / hire / trainingRoom / trainee / facilityCount / **char（配 `char` 字段，表示点名某名干员）** |
+| `char` | 与 `target: "char"` 配对：效果只作用于该名干员（例：丰川祥子、阿米娅） |
 | `value` | 数值。心情类恒为正、方向由 type 表达；orderLimit 可正可负；flag 类为 1 |
 | `unit` | percent / perHour / orders / slots / count / mood / probability / points / flat / flag |
-| `product` | 产物筛选：贵金属 / 作战记录 / 源石 / 技巧概要 / 精英材料 / 基建材料 / 芯片 / 晶体 / 任意类材料 |
-| `per` | 叠加单位：factionMember / tagMember / operator / resourcePoint / powerStation / tradingStation / hireSlot / goldLine / token / skillClass / capacity / orderLimit / droneCap / efficiency / roomLevel / formulaType（每种配方类别）/ facilityCount（每间满足条件的设施） |
+| `product` | 产物筛选：贵金属 / 作战记录 / 源石 / 技巧概要 / 精英材料 / 基建材料 / 芯片 / 晶体 / 任意类材料 / 装置 / 异铁 / 异铁组 / 聚酸酯 / 源岩 / 酮凝集 / 炽合金块 / 手性屈光体 / 重相位对映体（「A 或 B」记为 `A/B`，消费方需按 `/` 拆分） |
+| `per` | 叠加单位：factionMember / tagMember / operator / resourcePoint / powerStation / tradingStation / hireSlot（**不含初始招募位**）/ goldLine / token / skillClass（配 `skillClass` 类名）/ capacity / orderLimit / droneCap / efficiency / roomLevel / formulaType（每种配方类别）/ facilityCount（每间满足条件的设施）/ accumulate / **orderCount（每笔订单）/ orderGap（订单数与上限的差额）** |
+| `skillClass` | 与 `per: "skillClass"` 配对：标准化 / 莱茵科技 / 红松骑士团 / 金属工艺 |
+| `exclude` | 计量基数要排除的部分：`facilityCountBonus`（「不包含根据设施数量提供加成的生产力」） |
+| `distribution` | 数值分配方式：`average`（原文「平均分配到总计 +N」，总额在目标间均摊，不能按每人 +N 计算） |
+| `count` | 与 `distribution` 同类场景的次数语义（例：恢复一次心情 → `count: 1`） |
+| `recipeMoodCostExact` / `recipeMoodCostAtLeast` | 配方心情消耗阈值的两种口径：**精确 N** / **≥N**（原文「心情消耗为 N」vs「为 N 以上」），与 `condition.recipeMoodCost.op`（`eq`/`gte`）一致 |
 | `perValue` | “每 N”里的 N，缺省 1 |
 | `factionId` / `tagId` / `profession` | 触发主体筛选 |
 | `resourceId` / `resourceName` | 分母口径里按哪种特殊资源结算（例：每 1 点**情报储备** +5% 联络速度） |
@@ -92,7 +98,19 @@
 | `orderTypeId` / `orderTypeName` | 固定获取的订单类型（来自 `<$cc.tra.*>` 标记：`pepe` 特别独占订单、`closure` 可露希尔特别订单） |
 | `ignoreOrderEfficiency` | `true` = 该类订单不受订单获取效率影响（佩佩「不受任何订单获取效率的影响」） |
 | `cap` | 叠加上限（最多 N / 上限 N） |
-| `condition` | { type, text, threshold?, char?, room?, faction? / factionId?, tagId?, excludeRooms?, branch?, level?, hours?, extra? } |
+| `condition` | { type, text, threshold?, op?, char?, room?, faction? / factionId?, tagId? / tagIds?+tagNames?, excludeRooms?, branch?, level?, hours?, per?, perValue?, extra? } |
+
+### 条件里的身份字段（`char` / `factionId` / `tagIds`）
+
+条件的“目标是谁”必须结构化，不能只留在 `condition.text` 里，否则下游无法判定：
+
+| 原文 | 字段 |
+| --- | --- |
+| 如果目标是**锡兰** | `{ type: "targetIs", char: "锡兰" }` |
+| 如果目标是**萨米干员** | `{ type: "targetIs", factionId: "sm", factionName: "萨米" }` |
+| 如果目标是**莱欧斯小队干员** | `{ type: "targetIs", tagIds: ["dungeon"], tagNames: ["莱欧斯小队"] }` |
+| 当前贸易站内**存在格拉斯哥帮干员**时 | `{ type: "factionInRoom", room: "TRADING", factionId: "glasgow", factionName: "格拉斯哥帮" }` |
+| **野鬃所在的**制造站 | `{ type: "charInRoom", char: "野鬃", room: "MANUFACTURE" }` |
 | `stacking` | stack（叠加）/ max（同种取最高）/ maxPerTarget / unique / special |
 | `addition` | 暖机类：{ initial, step, final } |
 | `source` / `text` | 来源 buffId 与中文片段，便于人工核对 |

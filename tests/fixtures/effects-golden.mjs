@@ -59,12 +59,6 @@ export const CASES = [
 
   // ── S3 「每 N 个 X」的叠加单位 ───────────────────────────────────────────
   {
-    buffId: 'manu_prod_spd_train&lv[000]',
-    note: '训练室每级 → per=roomLevel，且 cap=30',
-    expectLength: 1,
-    expect: [{ type: 'productivity', value: 10, per: 'roomLevel', cap: 30 }],
-  },
-  {
     buffId: 'manu_prod_spd&power[000]',
     note: '每个发电站 → per=powerStation（不能落到兜底 efficiency）',
     expect: [{ _any: true, type: 'productivity', value: 5, per: 'powerStation' }],
@@ -80,14 +74,12 @@ export const CASES = [
     expect: [{ _any: true, type: 'specialResource', per: 'roomLevel' }],
   },
   {
-    buffId: 'manu_constrLv[000]',
-    note: '每间设施每级 → per=roomLevel（产物名不是计数单位）',
-    expect: [{ _any: true, type: 'specialResource', per: 'roomLevel' }],
-  },
-  {
     buffId: 'trade_ord_spd&meet[000]',
-    note: '会客室每级额外提供 5% → per=roomLevel',
-    expect: [{ value: 25, condition: null }, { _any: true, value: 5, per: 'roomLevel' }],
+    note: '会客室每级额外提供 5% → per=roomLevel；「会客室」只是计数来源，加成仍属本贸易站',
+    expect: [
+      { value: 25, condition: null },
+      { _any: true, value: 5, per: 'roomLevel', cap: 40, target: 'room', countScope: { room: 'MEETING' } },
+    ],
   },
 
   // ── S4 双职业不能只留第一个 ─────────────────────────────────────────────
@@ -137,9 +129,9 @@ export const CASES = [
   },
   {
     buffId: 'manu_prod_spd_variable2[000]',
-    note: '合并为单条：每 5% 效率 +5% 生产力，cap 40',
+    note: '合并为单条：每 5% 效率 +5% 生产力，cap 40；计量基数排除「按设施数量提供的加成」',
     expectLength: 1,
-    expect: [{ value: 5, per: 'efficiency', perValue: 5, cap: 40 }],
+    expect: [{ value: 5, per: 'efficiency', perValue: 5, cap: 40, exclude: 'facilityCountBonus' }],
   },
   {
     buffId: 'trade_ord_spd_variable3[000]',
@@ -222,8 +214,16 @@ export const CASES = [
   // ── 加工站心情消耗：单位是「每次加工点数」，且设定值/增减量要可区分 ─────
   {
     buffId: 'workshop_formula_cost[000]',
-    note: '心情消耗为4以上全部-2：value=2（4 是阈值），unit=mood，subtype=reduce',
-    expect: [{ type: 'workshopMoodCost', value: 2, unit: 'mood', subtype: 'reduce' }],
+    note: '心情消耗为4以上全部-2：value=2（4 是阈值），unit=mood，subtype=reduce；「4以上」是 ≥ 口径',
+    expect: [{
+      _any: true, type: 'workshopMoodCost', value: 2, unit: 'mood', subtype: 'reduce',
+      recipeMoodCostAtLeast: 4, condition: { type: 'recipeMoodCost', threshold: 4, op: 'gte' },
+    }],
+  },
+  {
+    buffId: 'workshop_formula_cost3[120]',
+    note: '慑砂：「心情消耗为4」是精确匹配，与「4以上」必须可区分',
+    expect: [{ _any: true, recipeMoodCostExact: 4, condition: { type: 'recipeMoodCost', threshold: 4, op: 'eq' } }],
   },
   {
     buffId: 'workshop_formula_cost[010]',
@@ -530,8 +530,11 @@ export const CASES = [
   },
   {
     buffId: 'trade_ord_limit_count[000]',
-    note: '孑：订单上限有「最少为1」的下限，删条件时不能把下限一起丢掉',
-    expect: [{ _any: true, type: 'orderLimit', value: -1, min: 1 }],
+    note: '孑：订单上限有「最少为1」的下限；每10%订单效率扣1上限（计数是效率），每1笔订单+4%（计数是笔数）',
+    expect: [
+      { _any: true, type: 'orderLimit', value: -1, min: 1, per: 'efficiency', perValue: 10 },
+      { _any: true, type: 'orderEfficiency', per: 'orderCount', perValue: 1 },
+    ],
   },
   {
     buffId: 'trade_ord_spd&formula[000]',
@@ -678,5 +681,127 @@ export const CASES = [
       _any: true, type: 'trainingSpeed', subtype: 'instantComplete',
       profession: '近卫', condition: { type: 'trainToLevel', level: 1 },
     }],
+  },
+  // ── per=roomLevel 必须说明数的是哪种房间的等级（制造站技能按宿舍等级加成） ──
+  {
+    buffId: 'manu_formula_spd&dorm&lv[000]',
+    note: '娜仁图亚：「每间宿舍每级」数的是宿舍等级，不是制造站自身等级',
+    expect: [{ _any: true, type: 'productivity', per: 'roomLevel', countScope: { room: 'DORMITORY' } }],
+  },
+  {
+    buffId: 'manu_constrLv[000]',
+    note: '至简：「基建内除活动室外每间设施每级」数的是全基建设施等级，且排除活动室',
+    expect: [{
+      _any: true, type: 'specialResource', per: 'roomLevel', cap: 64,
+      countScope: { baseFacilities: true, excludeRooms: ['PRIVATE'] },
+    }],
+  },
+  {
+    buffId: 'manu_prod_spd_train&lv[000]',
+    note: '维伊：「训练室每级」为制造站加成，计数域是训练室等级',
+    expect: [{ _any: true, type: 'productivity', per: 'roomLevel', countScope: { room: 'TRAINING' } }],
+  },
+
+  // ── 条件里的身份必须结构化（具名干员/阵营/小队），不能只留中文 ──────────────
+  {
+    buffId: 'dorm_rec_all&tag[000]',
+    note: '森西：「如果目标是莱欧斯小队干员」→ tagIds，否则排班无法判定谁是莱欧斯小队',
+    expectLength: 2,
+    expect: [{ value: 0.15, condition: null }, { _any: true, value: 0.15, condition: { type: 'targetIs', tagIds: ['dungeon'] } }],
+  },
+  {
+    buffId: 'dorm_rec_single_power[000]',
+    note: '寒檀：「如果目标是萨米干员」→ factionId=sm',
+    expect: [{ _any: true, value: 0.45, condition: { type: 'targetIs', factionId: 'sm' } }],
+  },
+  {
+    buffId: 'trade_ord_spd&par[001]',
+    note: '维娜：「当前贸易站内存在格拉斯哥帮干员时」+10% 的条件不能丢',
+    expectLength: 2,
+    expect: [{ value: 30, condition: null }, { _any: true, value: 10, condition: { type: 'factionInRoom', factionId: 'glasgow' } }],
+  },
+  {
+    buffId: 'power_prod_spd_P[000]',
+    note: '正义骑士号：「野鬃所在的制造站」只对该制造站生效',
+    expect: [{ _any: true, value: 5, condition: { type: 'charInRoom', char: '野鬃', room: 'MANUFACTURE' } }],
+  },
+  {
+    buffId: 'dorm_rec_toone[000]',
+    note: '摩根：推进之王须同宿舍才提供 +0.3',
+    expect: [{
+      _any: true, value: 0.3, factionId: 'glasgow',
+      condition: { type: 'charInRoom', char: '推进之王', room: 'DORMITORY' },
+    }],
+  },
+  {
+    buffId: 'control_mp_cost_double[000]',
+    note: '魔王：「自身和阿米娅」两人各 +0.05，不能只留自身',
+    expectLength: 2,
+    expect: [{ _any: true, target: 'self', value: 0.05 }, { _any: true, target: 'char', char: '阿米娅', value: 0.05 }],
+  },
+
+  // ── 心情消耗默认落在技能持有者身上（口径决策 10） ──────────────────────────
+  {
+    buffId: 'manu_prod_limit&cost[000]',
+    note: '清道夫：「心情每小时消耗-0.25」是自身减免，不是全房间',
+    expect: [{ _any: true, type: 'moodCostReduction', target: 'self', value: 0.25 }],
+  },
+  {
+    buffId: 'trade_cost[000]',
+    note: '火哨：「贸易站内干员心情每小时消耗-0.1」点名了房间成员，必须保留 room',
+    expect: [{ _any: true, type: 'moodCostReduction', target: 'room', value: 0.1 }],
+  },
+
+  // ── 技能类名 / 计数单位 ──────────────────────────────────────────────────
+  {
+    buffId: 'manu_skill_spd1[000]',
+    note: '水月：per=skillClass 必须说明是哪一类，否则三条不同类别同形',
+    expect: [{ _any: true, type: 'productivity', per: 'skillClass', skillClass: '标准化', value: 5 }],
+  },
+  {
+    buffId: 'trade_ord_limit_diff[000]',
+    note: '孑：「订单数与上限每差1笔」是条件不是订单上限+1，不能凭空多一条',
+    expectLength: 1,
+    expect: [{ _any: true, value: 4, per: 'orderGap', perValue: 1, condition: { type: 'orderGap', threshold: 1 } }],
+  },
+  {
+    buffId: 'manu_prod_spd_variable3[000]',
+    note: '泡泡：「无法与回收利用叠加，且优先生效」→ 取最高而不是累加',
+    expect: [
+      { _any: true, value: 1, stacking: 'max' },
+      { _any: true, value: 3, stacking: 'max' },
+    ],
+  },
+  // ── 加工站配方口径：为N（精确）vs N以上（≥） ─────────────────────────────
+  {
+    buffId: 'workshop_formula_cost3[100]',
+    note: '亚叶：「心情消耗为2」是精确匹配，字段不能叫 AtLeast',
+    expect: [{ _any: true, recipeMoodCostExact: 2, condition: { type: 'recipeMoodCost', threshold: 2, op: 'eq' } }],
+  },
+  {
+    buffId: 'workshop_formula_recovery[000]',
+    note: '棘刺：恢复量是整份配方心情消耗，「每2次」要落成阈值',
+    expect: [{
+      _any: true, type: 'moodRecovery', target: 'self', unit: 'mood', subtype: 'refundRecipeCost',
+      condition: { type: 'afterNoByproduct', threshold: 2 },
+    }],
+  },
+  {
+    buffId: 'dorm_rec_all&single[000]',
+    note: '冰酿：+0.8 是宿舍总额，要在心情未满成员间均摊',
+    expect: [{
+      _any: true, type: 'moodRecovery', target: 'dormitory', value: 0.8,
+      distribution: 'average', stacking: 'maxPerTarget',
+    }],
+  },
+  {
+    buffId: 'hire_spd_bd_n1_n1[200]',
+    note: '桑葚：原文标记手误写成 <<$cc.bd_b1>，resourceId 不能丢',
+    expect: [{ _any: true, type: 'specialResource', resourceId: 'bd_b1', resourceName: '人间烟火', per: 'hireSlot', value: 10 }],
+  },
+  {
+    buffId: 'meet_team[020]',
+    note: '梅：线索派系只记 clueNo + factionName，factionId 是另一套命名空间（口径决策 6）',
+    expect: [{ _any: true, type: 'clueBias', clueNo: 2, factionId: null, factionName: '企鹅物流' }],
   },
 ]

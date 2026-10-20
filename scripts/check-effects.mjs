@@ -14,12 +14,13 @@ const KNOWN_UNITS = new Set(['percent', 'perHour', 'orders', 'slots', 'count', '
 const KNOWN_TARGETS = new Set([
   'self', 'room', 'roomMembers', 'control', 'dormitory', 'otherFacilities', 'partialFacilities',
   'allManufacture', 'allTrading', 'allDormitory', 'meeting', 'hire', 'trainingRoom', 'trainee',
-  'facilityCount', 'base',
+  'facilityCount', 'base', 'char',
 ])
 const KNOWN_PER = new Set([
   'factionMember', 'tagMember', 'operator', 'resourcePoint', 'powerStation', 'tradingStation',
   'dormitoryLevel', 'hireSlot', 'goldLine', 'token', 'skillClass', 'capacity', 'orderLimit',
   'droneCap', 'efficiency', 'roomLevel', 'accumulate', 'facilityCount', 'formulaType',
+  'orderCount', 'orderGap',
 ])
 const ROOMS = new Set(['CONTROL', 'POWER', 'MANUFACTURE', 'TRADING', 'DORMITORY', 'WORKSHOP', 'HIRE', 'TRAINING', 'RECYCLE', 'MEETING'])
 
@@ -48,6 +49,7 @@ for (const c of chars) {
       if (!KNOWN_TYPES.has(e.type)) problems.push({ char: c.name, skill: s.name, issue: '未知 type: ' + e.type })
       if (e.unit && !KNOWN_UNITS.has(e.unit)) problems.push({ char: c.name, skill: s.name, issue: '未知 unit: ' + e.unit })
       if (e.target && !KNOWN_TARGETS.has(e.target)) problems.push({ char: c.name, skill: s.name, issue: '未知 target: ' + e.target })
+      if (e.target === 'char' && !e.char) problems.push({ char: c.name, skill: s.name, issue: 'target=char 但缺 char 字段' })
       if (e.per && !KNOWN_PER.has(e.per)) problems.push({ char: c.name, skill: s.name, issue: '未知 per: ' + e.per })
       if (typeof e.value !== 'number' || Number.isNaN(e.value)) problems.push({ char: c.name, skill: s.name, issue: 'value 不是数字: ' + e.value })
       if (e.factionId) factionIds.add(e.factionId)
