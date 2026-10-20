@@ -215,6 +215,23 @@ function isPreamble(text) {
   return PREAMBLE_RE.test(text.trim()) && !findMetricForPreamble(text)
 }
 
+// 后继效果句的引子词：「则…」「且…」「额外…」「同时…」
+const CONTINUATION_HEAD_RE = /^(?:则|且|并|同时|该|其|额外|进一步)(?:额外)?/
+
+/**
+ * 「A；如果 C，则 B」里的 C 只限定 B，不能回溯挂到已经生成的 A 上。
+ * 判断依据：C 是纯条件从句（无指标词），且它后面还跟着一条效果句。
+ */
+function hasEffectAfter(segments, si, roomType) {
+  for (let i = si + 1; i < segments.length; i += 1) {
+    const next = segments[i]
+    if (isPreamble(next.text)) continue
+    if (findMetric(next.text, roomType)) return true
+    return CONTINUATION_HEAD_RE.test(next.text.trim()) || /额外/.test(next.text)
+  }
+  return false
+}
+
 // 前置从句里如果出现指标词，说明它不是纯前置（例如“进驻加工站加工技巧概要时”）
 function findMetricForPreamble(text) {
   return /生产力|效率|上限|速度|概率|心情|容量/.test(text)
@@ -975,7 +992,10 @@ function parseBonusClause(buff, seg, allTokens, prevEffects) {
     unit: useUnit,
     target: useTarget,
     value: realValue,
-    condition: detectCondition(text) || (prev.condition ? { ...prev.condition } : undefined),
+    // 不在这里继承 prev.condition：本段前面若刚出现过条件从句，
+    // 那条从句才是本职的前置（例如「A+0.55，如果目标是锡兰，则额外+0.45」）。
+    // 继承交给 parseBuff 在 pendingCondition 之后统一兜底。
+    condition: detectCondition(text) || undefined,
     stacking: detectStacking(text),
     source: buff.buffId,
     text: stripMarkers(text).trim(),
@@ -1069,7 +1089,8 @@ export function parseBuff(buff) {
   // 后段才是效果。先攒起来，等下一条 effect 生成时附上。
   let pendingCondition = null
 
-  for (const seg of segments) {
+  for (let si = 0; si < segments.length; si += 1) {
+    const seg = segments[si]
     const className = buff.buffId.replace(/\[\d+\]$/, '')
 
     const fc = parseFacilityCount(buff, t, seg, t.tokens)
@@ -1100,8 +1121,19 @@ export function parseBuff(buff) {
     // “则恢复效果额外+0.45”“充能速度额外+3%”“则赤金交付数额外+1”
     const bonus = parseBonusClause(buff, seg, t.tokens, effects)
     if (bonus) {
+      if (!bonus.condition) {
+        if (pendingCondition && pendingCondition.condition) {
+          bonus.condition = pendingCondition.condition
+        } else {
+          // 没有新条件从句时，才沿用上一条的条件（“当与X一起工作时，A+5%，额外+3%”）
+          const p = effects[effects.length - 1]
+          if (p && p.condition) bonus.condition = { ...p.condition }
+        }
+      }
       if (pendingCondition && !bonus.condition) {
         bonus.condition = pendingCondition.condition
+      }
+      if (pendingCondition) {
         if (pendingCondition.per && !bonus.per) bonus.per = pendingCondition.per
         if (pendingCondition.perValue != null && bonus.perValue == null) bonus.perValue = pendingCondition.perValue
         if (pendingCondition.cap != null && bonus.cap == null) bonus.cap = pendingCondition.cap
@@ -1124,9 +1156,15 @@ export function parseBuff(buff) {
       if (capOnly != null) { effects[effects.length - 1].cap = capOnly; continue }
     }
 
-    // 纯条件从句（“当自身心情处于12以下时”）：挂到上一条的 condition
+    // 纯条件从句（“当自身心情处于12以下时”）
     const condOnly = detectCondition(seg.text)
     if (condOnly && !findMetric(seg.text, buff.roomType) && effects.length) {
+      // 「A；如果 C，则 B」：C 只限定后面的 B。
+      // 回溯挂到 A 会让本无条件的基础值变成「满足 C 才生效」，严重低估收益。
+      if (hasEffectAfter(segments, si, buff.roomType)) {
+        pendingCondition = { condition: condOnly, per: null, perValue: null }
+        continue
+      }
       const prev = effects[effects.length - 1]
       prev.condition = prev.condition
         ? { ...condOnly, extra: prev.condition.text || prev.condition.extra }
