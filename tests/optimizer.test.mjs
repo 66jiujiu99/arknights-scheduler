@@ -557,3 +557,32 @@ test('operators data exposes structured effects and Ch\'en faction recovery', ()
   assert.equal(skill.effects[0].factionId, 'lgd')
   assert.ok(Object.values(operators.characters).every((c) => c.skills.every((s) => Array.isArray(s.effects))))
 })
+
+test('characters 暴露 factions，与效果里的 factionId 同一套命名', () => {
+  const operators = JSON.parse(readFileSync(new URL('../public/data/v5/operators.json', import.meta.url), 'utf8'))
+  const chars = Object.values(operators.characters)
+  const byName = (name) => chars.find((c) => c.name === name)
+  // 标记 id ↔ 官方 nation/group/team 的翻译，逐个抽样确认
+  assert.ok(byName('陈').factions.includes('lgd'), '龙门近卫局')
+  assert.ok(byName('银灰').factions.includes('karlan'), '谢拉格')
+  assert.ok(byName('早露').factions.includes('ussg'), '乌萨斯学生自治团')
+  assert.ok(byName('灰烬').factions.includes('R6'), '彩虹小队')
+  assert.ok(byName('提丰').factions.includes('sm'), '萨米')
+  assert.ok(byName('芬').factions.includes('A1'), 'A1 小队')
+  assert.ok(byName('吽').factions.includes('lda'), '鲤氏侦探事务所')
+  assert.ok(byName('塞雷娅').factions.includes('rh'), '莱茵生命')
+
+  // 反向护栏：效果里按派系计数用到的 factionId，必须至少能落到一个角色身上，
+  // 否则那条效果永远算不出人数（正是本轮修复的 bug）。
+  const used = new Set()
+  for (const c of chars) {
+    for (const s of c.skills || []) {
+      for (const e of s.effects || []) {
+        if (e.factionId && e.per === 'factionMember') used.add(e.factionId)
+      }
+    }
+  }
+  const owned = new Set(chars.flatMap((c) => c.factions || []))
+  const missing = [...used].filter((f) => !owned.has(f))
+  assert.deepEqual(missing, [], '这些 factionId 找不到任何干员: ' + missing.join(','))
+})

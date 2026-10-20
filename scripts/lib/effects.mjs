@@ -363,7 +363,9 @@ function detectPer(text, segTokens) {
   if (/每间设施每级|宿舍每级|每级/.test(text)) per = 'roomLevel'
   // 「每个招募位」是设施槽位计数，即使句中出现特殊资源也不该退化成 resourcePoint
   else if (/招募位/.test(text)) per = 'hireSlot'
-  else if (bd) per = 'resourcePoint'
+  // 「宿舍内每有1名干员则人间烟火+1」：句子里的资源是<b>收益</b>，计数单位是人，
+  // 不能因为出现 <$cc.bd_*> 标记就把 per 判成 resourcePoint。
+  else if (bd && !/每(?:有)?\s*\d*\s*名干员/.test(text)) per = 'resourcePoint'
   else if (faction) per = 'factionMember'
   else if (tag) per = 'tagMember'
   else {
@@ -450,6 +452,28 @@ const CONDITION_RULES = [
   [/如果(?!\d+台以上)(.+?)进驻在(.+?)(?:[，）]|$)|如果(.+?)进驻(.+?)时/, (m) => ({ type: 'charInRoom', char: m[1] || m[3], room: ROOM_ALIASES[(m[2] || m[4] || '').trim()] || null })],
   // 「若焰狐龙梓兰进驻控制中枢，则线索搜集速度提升10%」
   [/若(.+?)进驻在?(.+?)(?:[，）]|则|$)/, (m) => ({ type: 'charInRoom', char: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
+  // 「当与德克萨斯在同一个贸易站时」「当与温米在同一个制造站时」
+  [/当与(.+?)在同一个(.+?)(?:时|，|$)/, (m) => ({ type: 'withCharInRoom', char: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
+  // 「当与乌萨斯学生自治团干员在同一个制造站时」：同房间的派系条件
+  [/与(.+?)干员在同一个(.+?)(?:时|，|$)/, (m) => ({ type: 'withFactionInRoom', faction: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
+  // 「如果该宿舍内有其他干员」
+  [/该宿舍内有其他干员|宿舍内有其他干员/, () => ({ type: 'otherMembersInRoom' })],
+  // 「如果乌萨斯特饮达到4瓶」
+  [/如果(.+?)达到(\d+)(?:瓶|点|个)/, (m) => ({ type: 'resourceAtLeast', resourceName: m[1].trim(), threshold: Number(m[2]) })],
+  // 「当乌尔比安在基建内时（不包含副手及活动室使用者）」
+  [/当(.+?)在基建内时/, (m) => ({ type: 'charInBase', char: m[1].trim() })],
+  // 「与其他干员进驻会客室一起工作时」
+  [/与其他干员进驻(.+?)一起工作/, (m) => ({ type: 'withOtherInRoom', room: ROOM_ALIASES[(m[1] || '').trim()] || null })],
+  // 「如果进驻在宿舍内的深海猎人干员为满心情」
+  [/进驻在宿舍内的(.+?)干员为满心情/, (m) => ({ type: 'dormFactionMoodFull', faction: m[1].trim() })],
+  // 「若古米在贸易站」
+  [/若(.+?)在(贸易站|制造站|会客室|宿舍|控制中枢|发电站)/, (m) => ({ type: 'charInRoom', char: m[1].trim(), room: ROOM_ALIASES[m[2]] || null })],
+  // 「当魔王进驻中枢时…」
+  [/当(.+?)进驻(?:在)?(中枢|控制中枢)/, (m) => ({ type: 'charInRoom', char: m[1].trim(), room: 'CONTROL' })],
+  // 「反之则自身心情每小时恢复+0.5」：与前一条互斥的另一分支
+  [/^反之/, () => ({ type: 'elseBranch' })],
+  // 「每有1个深海猎人干员进驻在宿舍以外的设施」
+  [/每有(\d+)个(.+?)干员进驻在宿舍以外/, (m) => ({ type: 'factionInFacility', faction: m[2].trim(), threshold: Number(m[1]) })],
   [/如果目标是(.+?)，则|如果目标是(.+?)$/, (m) => ({ type: 'targetIs', text: m[1] || m[2] })],
   [/若(.+?)大于等于(.+?)，|若(.+?)大于(.+?)，/, (m) => ({ type: 'resourceCompare', left: m[1] || m[3], right: m[2] || m[4] })],
   [/每产生\d+次联络次数/, () => ({ type: 'onContact' })],
@@ -492,17 +516,22 @@ function clauseNumbers(text) {
 }
 
 function detectCondition(text) {
-  if (!CONDITION_TRIGGERS.test(text)) return null
+  // 规则一律在「去掉标记后的纯文本」上匹配：原文里数字几乎都被
+  // <@cc.vup>N</> 包着，直接用带标记的串匹配「心情\d+以下」之类会全部落空，
+  // 条件就被降级成 other/trigger。
+  const plain = stripMarkers(text)
+  const source = CONDITION_TRIGGERS.test(text) || CONDITION_TRIGGERS.test(plain) ? plain : null
+  if (source == null) return null
   for (const [re, fn] of CONDITION_RULES) {
-    const m = text.match(re)
+    const m = source.match(re) || text.match(re)
     if (m) {
       const c = fn(m) || {}
-      c.text = stripMarkers(text).trim()
+      c.text = plain.trim()
       c.numbers = clauseNumbers(text)
       return c
     }
   }
-  return { type: 'other', text: stripMarkers(text).trim(), numbers: clauseNumbers(text) }
+  return { type: 'other', text: plain.trim(), numbers: clauseNumbers(text) }
 }
 
 function detectStacking(text) {
@@ -1041,6 +1070,10 @@ function parseContinuation(buff, seg, allTokens, prevEffects) {
   const segTokens = tokensIn(allTokens, seg)
   const nums = segTokens.filter((x) => x.kind === 'num')
 
+  // 「同时每有1点人间烟火，则订单获取效率+1%」：这是下一条效果的分母从句，
+  // 不是上一条效果的延续；交给 pendingCondition 传给后面那条。
+  if (/^(?:同时|且)?每/.test(text.trim()) && !/额外/.test(text)) return null
+
   // 能自己找到指标的（如“反之则自身心情每小时恢复+0.5”）交给常规解析
   const own = findMetric(text, buff.roomType)
   if (own) return null
@@ -1284,6 +1317,9 @@ function applyPending(e, pc) {
   }
   return e
 }
+
+// clueBias / fixedOrder 这类没有"排除自身"语义的效果，不能被范围词传染
+const NO_EXCLUDE_SELF_LATE = new Set(['clueBias', 'fixedOrder', 'resetOthers', 'specialBonus', 'unknown'])
 
 /** 解析单个 buff，返回 { effects, manualReview, text } */
 export function parseBuff(buff) {
@@ -1567,6 +1603,43 @@ export function parseBuff(buff) {
         keep.warmup = true
       }
     }
+  }
+
+  // 剩下的 trigger/other 里，有两类是能结构化的真条件：
+  // 「宿舍内每有1名心情12以下的干员」与「赤金交付数必定为2」。
+  for (const e of effects) {
+    const c = e.condition
+    if (!c || (c.type !== 'trigger' && c.type !== 'other')) continue
+    const t = String(c.text || '')
+    let m = t.match(/宿舍内(?:每有\s*\d*\s*名)?心情\s*(\d+)\s*以下的干员/)
+    if (m) { e.condition = { type: 'dormLowMoodCount', threshold: Number(m[1]), text: c.text }; continue }
+    m = t.match(/赤金交付数必定为\s*(\d+)/)
+    if (m) { e.condition = { type: 'fixedDeliveryCount', count: Number(m[1]), text: c.text }; continue }
+  }
+
+  // 「每有4条赤金生产线」「每名防守方干员…」「每个进驻在贸易站的谢拉格干员」这类分母从句
+  // 只用于计数，信息已经落在 per/perValue/factionId/resourceId 上。
+  // 留成 condition 会让下游把"每N"再当成一层触发条件（双重计数或直接判否）。
+  for (const e of effects) {
+    const c = e.condition
+    if (!c) continue
+    if (c.type !== 'trigger' && c.type !== 'other') continue
+    const t = String(c.text || '')
+    // 分母从句（含"每有/每名/每个/每N点"或整句以"基建内"起头）
+    if (!/每(?:有|拥有|名|个|点|条|间|格|架|台|瓶|级|层|\s*\d)/.test(t) && !/^基建内/.test(t)) continue
+    // 带心情/工作状态等门槛的从句是真条件，上面已单独收敛，这里不再动
+    if (/心情\s*\d+\s*[之以]|满心情|工作状态|以下|以上/.test(t)) continue
+    // 从句里的「除自身以外」属于效果本身的范围，删条件前要先落到 excludeSelf 上，
+    // 否则「每有1名除自身以外的莱茵生命干员」会从"不含自己"变成"含自己"。
+    if (/除自身以外|除自身之外/.test(t) && !NO_EXCLUDE_SELF_LATE.has(e.type)) e.excludeSelf = true
+    delete e.condition
+  }
+
+  // 「每名行医干员为当前干员的专精技能训练速度+10%」：行医是分支，原文里没有标记，
+  // 只能按中文名落到 branch 字段（与决策 4 的 branch 口径一致）。
+  for (const e of effects) {
+    const t = String((e.condition && e.condition.text) || '') + ' ' + String(e.text || '')
+    if (!e.branch && /每名行医干员/.test(t)) e.branch = '行医'
   }
 
   // 「每人为自身+45%」「则每人额外为自身心情恢复+0.05」：显式写了"每人/每名"就是逐人叠加，

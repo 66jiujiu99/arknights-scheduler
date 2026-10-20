@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseBuff, effectScore, EFFECT_TYPES } from './lib/effects.mjs'
+import { factionsOf } from './lib/factions.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 // 沙箱/只读环境下可用 --out 指定替代输出目录（例如写入临时目录后再拷回仓库）。
@@ -195,6 +196,9 @@ for (const [charId, entry] of Object.entries(building.chars || {})) {
       nation: info.nationId || '',
       group: info.groupId || '',
       faction: { nation: info.nationId || '', group: info.groupId || '' },
+      // 效果里的 factionId 来自 <$cc.g.*> 标记，和官方 nation/group/team 不是同一套命名，
+      // 这里落成"该干员属于哪些派系标记"，供下游按派系计数（见 lib/factions.mjs）。
+      factions: factionsOf({ id: charId, ...info }),
       skills,
     }
   }

@@ -206,8 +206,10 @@ function controlBonuses(controlOps) {
       for (const effect of effects) {
         if (effect.target === 'otherFacilities' || effect.target === 'dormitory') continue
         if (effect.type === 'moodRecovery') {
+          // 效果的 factionId 用的是描述标记 <$cc.g.*> 的取值（rh/bs/R6…），
+          // 角色表里对应的是 factions 数组；直接比 char.group 永远匹配不上。
           const count = effect.per === 'factionMember'
-            ? (controlOps || []).filter((x) => x.char?.group === effect.factionId).length
+            ? (controlOps || []).filter((x) => (x.char?.factions || []).includes(effect.factionId)).length
             : 1
           moodRecovery += Number(effect.value || 0) * count
         }
