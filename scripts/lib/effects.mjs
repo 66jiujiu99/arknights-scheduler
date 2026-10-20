@@ -1,5 +1,6 @@
 // scripts/lib/effects.mjs
 // v2 effects 解析器：把 building_data.json 的 buff 描述解析成程序可直接读取的结构化数据。
+import { EFFECT_OVERRIDES } from './effect-overrides.mjs'
 //
 // 输入：building_data.json 的 buff 对象（buffId / buffName / roomType / description / targets）
 // 输出：effects 数组 + manualReview
@@ -103,7 +104,7 @@ const BD_NAMES = {
 export const EFFECT_TYPES = [
   'productivity', 'orderEfficiency', 'orderLimit', 'capacity',
   'moodRecovery', 'moodCost', 'moodCostReduction', 'moodCostReset', 'moodRecoveryBlock', 'moodExchange',
-  'droneCharge', 'clueSpeed', 'clueBias', 'hireSpeed', 'trainingSpeed',
+  'droneCharge', 'clueSpeed', 'clueBias', 'hireSpeed', 'trainingSpeed', 'trainingTimeReduction',
   'workshopByproduct', 'workshopMoodCost', 'workshopLmdFree', 'workshopByproductGuarantee',
   'recycleEfficiency', 'facilityCount', 'specialResource', 'specialBonus',
   'orderQuality', 'fixedOrder', 'orderValue', 'goldLine', 'skillClassConvert',
@@ -1402,10 +1403,20 @@ export function parseBuff(buff) {
       last.condition.numbers = [...(last.condition.numbers || []), ...lost]
     }
   }
+  // 人工确证的个例修正：句式不规则，用通用正则去修的风险高于收益，见 effect-overrides.mjs
+  const override = EFFECT_OVERRIDES[buff.buffId]
+  if (override) {
+    const descText = stripMarkers(t.plain).trim()
+    effects.length = 0
+    for (const e of override.effects) {
+      effects.push({ ...e, source: buff.buffId, text: e.text || descText })
+    }
+    unparsed.length = 0
+  }
+
   const manualReview = unparsed.length
     ? { reason: '未识别的表述', segments: unparsed }
     : null
-
   return { effects, manualReview, text: stripMarkers(t.plain).trim() }
 }
 
