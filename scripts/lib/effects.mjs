@@ -233,6 +233,9 @@ function hasEffectAfter(segments, si, roomType) {
     const next = segments[i]
     if (isPreamble(next.text)) continue
     if (findMetric(next.text, roomType)) return true
+    // 「当自身心情处于12以下时，感知信息+10」：特殊资源增益没有指标词，
+    // 但它同样是一条效果句，否则条件会被回溯挂到上一条效果上。
+    if (/<\$cc\.bd[^>]*>|人间烟火|感知信息|思维链环|无声共鸣|情报储备|木天蓼|热情值|乌萨斯特饮|魔物料理|巫术结晶|记忆碎片|梦境|小节|工程机器人|外势|实地/.test(next.text)) return true
     // 「当与X一起工作时，更容易获得线索」：后半句是 clueBias 效果，也算后继效果
     if (CLUE_BIAS_RE.test(next.text)) return true
     return CONTINUATION_HEAD_RE.test(next.text.trim()) || /额外/.test(next.text)
@@ -1212,6 +1215,34 @@ function fallbackEffects(buff, t) {
   }]
 }
 
+// 前置从句（触发条件 + 叠加维度）挂到效果上。
+// 「每个进驻在贸易站的谢拉格干员，订单获取效率-15%」里 per/factionId 在从句里，
+// 而「每有1名彩虹小队干员，则情报储备+1」的资源 id 在效果段里，
+// 所以两边都要能互相补，且不能因为效果自带条件就整体跳过。
+function applyPending(e, pc) {
+  if (!e || !pc) return e
+  if (!e.condition) {
+    e.condition = pc.condition
+    if (pc.clauseNumbers && e.condition && !e.condition.numbers) e.condition.numbers = pc.clauseNumbers
+  } else if (pc.condition && pc.condition.text && !e.condition.extra) {
+    // 效果自带的条件（如配方阈值）与前置从句的条件（如「宿舍内每有10名…」）
+    // 是两件事，不能互相覆盖，前置从句保留在 extra 里
+    e.condition.extra = pc.condition.text
+  }
+  if (pc.factionId && !e.factionId) { e.factionId = pc.factionId; e.factionName = pc.factionName }
+  if (pc.tagId && !e.tagId) { e.tagId = pc.tagId; e.tagName = pc.tagName }
+  if (pc.resourceId && !e.resourceId) { e.resourceId = pc.resourceId; e.resourceName = pc.resourceName }
+  if (pc.cap != null && e.cap == null) e.cap = pc.cap
+  if (pc.per && !e.per) e.per = pc.per
+  if (pc.perValue != null && e.perValue == null) e.perValue = pc.perValue
+  if (pc.product && !e.product) e.product = pc.product
+  if (pc.profession && !e.profession && !e.professions) {
+    e.profession = pc.profession
+    if (pc.professions) e.professions = pc.professions
+  }
+  return e
+}
+
 /** 解析单个 buff，返回 { effects, manualReview, text } */
 export function parseBuff(buff) {
   const t = tokenize(buff.description)
@@ -1230,9 +1261,7 @@ export function parseBuff(buff) {
     if (fc) {
       // 「如果Lancet-2进驻在发电站，发电站额外+2（仅影响设施数量）」：
       // 条件在上一段，不能因为这条自带指标就把前置条件丢掉。
-      if (pendingCondition && pendingCondition.condition && !fc.condition) {
-        fc.condition = pendingCondition.condition
-      }
+      applyPending(fc, pendingCondition)
       effects.push(fc); pendingCondition = null; continue
     }
 
@@ -1259,7 +1288,7 @@ export function parseBuff(buff) {
     }
 
     const bd = parseBdExtra(buff, t, seg, t.tokens)
-    if (bd) { effects.push(bd); pendingCondition = null; continue }
+    if (bd) { applyPending(bd, pendingCondition); effects.push(bd); pendingCondition = null; continue }
 
     // “则恢复效果额外+0.45”“充能速度额外+3%”“则赤金交付数额外+1”
     const bonus = parseBonusClause(buff, seg, t.tokens, effects)
@@ -1356,41 +1385,7 @@ export function parseBuff(buff) {
     if (!e) e = parseContinuation(buff, seg, t.tokens, effects)
     if (e && e.skip) e = null
     if (e) {
-      if (pendingCondition) {
-        if (!e.condition) {
-          e.condition = pendingCondition.condition
-          if (pendingCondition.clauseNumbers && e.condition) {
-            e.condition.numbers = e.condition.numbers || pendingCondition.clauseNumbers
-          } else if (pendingCondition.clauseNumbers && !e.condition) {
-            e.condition = { type: 'trigger', text: String(e.text || ''), numbers: pendingCondition.clauseNumbers }
-          }
-        } else if (pendingCondition.condition && pendingCondition.condition.text && !e.condition.extra) {
-          // 效果自带的条件（如配方阈值）与前置从句的条件（如「宿舍内每有10名…」）
-          // 是两件事，不能互相覆盖，前置从句保留在 extra 里
-          e.condition.extra = pendingCondition.condition.text
-        }
-        // 叠加维度必须独立于 condition 传递：
-        // 「每个进驻在制造站的黑钢国际干员，生产力+5%」里，效果可能自带条件，
-        // 但 per/factionId 仍必须继承，否则阵营叠加信息整体丢失。
-        if (pendingCondition.factionId && !e.factionId) e.factionId = pendingCondition.factionId
-        if (pendingCondition.factionName && !e.factionName) e.factionName = pendingCondition.factionName
-        if (pendingCondition.tagId && !e.tagId) e.tagId = pendingCondition.tagId
-        if (pendingCondition.tagName && !e.tagName) e.tagName = pendingCondition.tagName
-        // 「每有1瓶乌萨斯特饮，则仓库容量上限+2」：特殊资源的 id 在分母从句里，
-        // 不传给效果主体就只剩 per=resourcePoint 却不知道是什么资源。
-        if (pendingCondition.resourceId && !e.resourceId) e.resourceId = pendingCondition.resourceId
-        if (pendingCondition.resourceName && !e.resourceName) e.resourceName = pendingCondition.resourceName
-        if (pendingCondition.cap != null && e.cap == null) e.cap = pendingCondition.cap
-        if (pendingCondition.per && !e.per) e.per = pendingCondition.per
-        if (pendingCondition.perValue != null && e.perValue == null) e.perValue = pendingCondition.perValue
-        if (pendingCondition.product && !e.product) e.product = pendingCondition.product
-        // 「协助狙击干员训练专精技能至1级时，心情每小时消耗+1」：职业限制在条件从句里，
-        // 不传给效果主体就等于没有职业限制。
-        if (pendingCondition.profession && !e.profession && !e.professions) {
-          e.profession = pendingCondition.profession
-          if (pendingCondition.professions) e.professions = pendingCondition.professions
-        }
-      }
+      applyPending(e, pendingCondition)
       effects.push(e)
     } else {
       // “生产作战记录类配方时”这类是产物限定，挂到下一条的 product
@@ -1421,10 +1416,19 @@ export function parseBuff(buff) {
         const profs = buff.roomType === 'TRAINING'
           ? detectProfessions(seg.text, tokensIn(t.tokens, seg))
           : []
+        // 「每个进驻在贸易站的谢拉格干员，订单获取效率-15%」：叠加维度与阵营都在
+        // 这个从句里，不能因为"还没有前一条效果"就把 per/factionId 丢掉。
         pendingCondition = {
           condition: condOnly,
-          per: null,
-          perValue: null,
+          per: per ? per.per : null,
+          perValue: per ? per.perValue : null,
+          factionId: per ? per.factionId : null,
+          factionName: per ? per.factionName : null,
+          tagId: per ? per.tagId : null,
+          tagName: per ? per.tagName : null,
+          resourceId: per ? per.resourceId : null,
+          resourceName: per ? per.resourceName : null,
+          cap: detectCap(seg.text),
           profession: profs[0] || null,
           professions: profs.length > 1 ? profs : null,
         }
