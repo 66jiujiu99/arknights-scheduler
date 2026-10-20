@@ -39,12 +39,19 @@ export const FACTION_MEMBERSHIP = {
   sp: { spChar: true }, // 异格
 }
 
-// 彩虹小队的「防守方 / 进攻方」在角色表里没有字段可判定，
-// 只能按同类技能（`train_spd_tag[020]/[030]` 家族）的持有者推断。
-// TODO：待官方数据补出阵营字段后替换。
+// 彩虹小队的「防守方 / 进攻方」在角色表里**没有任何字段**可判定：
+// 8 人的 teamId 都是 rainbow，groupId/nationId 全空，profession 也不区分
+// （艾拉与霜华同为特种-陷阱师，医生与导火索同为近卫，却分属两侧）。
+//
+// 因此这里只能是**外部知识**（原作 R6S 的攻防归属），不是数据推导：
+//   防守方 Defence：闪击 Blitz、霜华 Frost、战车 Tachanka、艾拉 Ela、医生 Doc
+//   进攻方 Attack ：灰烬 Ash、双月 Iana、导火索 Fuze
+// 旁证（数据内）：`train_spd_tag[020]` 原文写「最多生效4名」，
+// 说明防守方设计上 ≥4 人；旧表只有 2 人，属于不完整闭集。
+// 若官方日后补出阵营字段，应改用字段删除本表。
 export const FACTION_CHARS = {
-  Defence: ['char_4123_ela', 'char_4125_rdoc'], // 艾拉、医生
-  Attack: ['char_4124_iana', 'char_4126_fuze'], // 双月、导火索
+  Defence: ['char_457_blitz', 'char_458_rfrost', 'char_459_tachak', 'char_4123_ela', 'char_4125_rdoc'],
+  Attack: ['char_456_ash', 'char_4124_iana', 'char_4126_fuze'],
 }
 
 /** 返回某角色所属的派系标记 id 列表。 */

@@ -45,7 +45,8 @@ const PRODUCT_BY_FORMULA = {
 }
 
 // "每 N" 后面可能出现的量词，用来定位 perValue
-const PER_UNIT_CHARS = '点个名间条台架瓶格层只次笔小节%座位'
+// 「类」用于「制造站每有1类配方进行加工」这类按配方类别计数的表达。
+const PER_UNIT_CHARS = '点个名间条台架瓶格层只次笔小节类%座位'
 
 // 指标词表。findMetric 取位置最靠前的匹配。
 const METRICS = [
@@ -319,6 +320,8 @@ function detectTarget(text) {
 
 const PER_RULES = [
   [/每个招募位|招募位（不包含初始招募位）/, { per: 'hireSlot' }],
+  // 「制造站每有1类配方进行加工」：数的是配方类别，不是干员人数
+  [/每\s*\d*\s*类配方|类配方进行加工/, { per: 'formulaType' }],
   [/每间宿舍每级|宿舍每级|每级|每间设施每级/, { per: 'roomLevel' }],
   [/每有\d*间发电站|每\d*间发电站|间发电站|每(?:个|座)发电站/, { per: 'powerStation' }],
   [/每个贸易站|每\d*个?贸易站/, { per: 'tradingStation' }],
@@ -363,6 +366,11 @@ function detectPer(text, segTokens) {
   if (/每间设施每级|宿舍每级|每级/.test(text)) per = 'roomLevel'
   // 「每个招募位」是设施槽位计数，即使句中出现特殊资源也不该退化成 resourcePoint
   else if (/招募位/.test(text)) per = 'hireSlot'
+  // 「每有一间进驻精英干员的设施」按设施计数，不是按人；必须先抢在阵营判断之前。
+  else if (faction && /每[^，；]{0,10}间[^，；]{0,14}设施/.test(text)) per = 'facilityCount'
+  // 「每个岁干员进驻在…则人间烟火+5」：数的是人（阵营成员），资源只是收益。
+  // 不先判阵营的话，bd 标记会把 per 抢成 resourcePoint，阵营信息（factionId）也一并丢失。
+  else if (faction && /干员/.test(text) && !/每\s*\d*\s*点/.test(text)) per = 'factionMember'
   // 「宿舍内每有1名干员则人间烟火+1」：句子里的资源是<b>收益</b>，计数单位是人，
   // 不能因为出现 <$cc.bd_*> 标记就把 per 判成 resourcePoint。
   else if (bd && !/每(?:有)?\s*\d*\s*名干员/.test(text)) per = 'resourcePoint'
@@ -445,6 +453,9 @@ const CONDITION_RULES = [
   [/下笔赤金订单交付数大于\s*(\d+)/, (m) => ({ type: 'nextOrderAbove', threshold: Number(m[1]) })],
   [/下笔赤金订单交付数小于\s*(\d+)/, (m) => ({ type: 'nextOrderBelow', threshold: Number(m[1]) })],
   [/下笔赤金订单是违约订单/, () => ({ type: 'nextOrderDefault' })],
+  // 「当与萨尔贡干员进驻控制中枢一起工作时」：主体是阵营而不是具名干员，
+  // 抢在下面的 withCharInRoom 规则之前判定，否则阵营名会被塞进 char 字段。
+  [/当与(.+?)干员进驻(.+?)一起工作/, (m) => ({ type: 'withFactionInRoom', faction: m[1].trim(), room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
   [/当与(.+?)一起进驻(.+?)时|当与(.+?)进驻(.+?)一起工作时/, (m) => ({ type: 'withCharInRoom', char: m[1] || m[3], room: ROOM_ALIASES[(m[2] || m[4] || '').trim()] || null })],
   [/与其他(.+?)干员进驻(.+?)一起工作/, (m) => ({ type: 'withCharInRoom', char: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
   [/当(.+?)入驻(.+?)时/, (m) => ({ type: 'charInRoom', char: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
@@ -452,9 +463,11 @@ const CONDITION_RULES = [
   [/如果(?!\d+台以上)(.+?)进驻在(.+?)(?:[，）]|$)|如果(.+?)进驻(.+?)时/, (m) => ({ type: 'charInRoom', char: m[1] || m[3], room: ROOM_ALIASES[(m[2] || m[4] || '').trim()] || null })],
   // 「若焰狐龙梓兰进驻控制中枢，则线索搜集速度提升10%」
   [/若(.+?)进驻在?(.+?)(?:[，）]|则|$)/, (m) => ({ type: 'charInRoom', char: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
+  // 「当与乌萨斯学生自治团干员在同一个制造站时」：同房间的派系条件，
+  // 必须抢在下面的「当与X在同一个Y时」之前，否则阵营名会被塞进 char 字段。
+  [/当与(.+?)干员在同一个(.+?)(?:时|，|$)/, (m) => ({ type: 'withFactionInRoom', faction: m[1].trim(), room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
   // 「当与德克萨斯在同一个贸易站时」「当与温米在同一个制造站时」
   [/当与(.+?)在同一个(.+?)(?:时|，|$)/, (m) => ({ type: 'withCharInRoom', char: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
-  // 「当与乌萨斯学生自治团干员在同一个制造站时」：同房间的派系条件
   [/与(.+?)干员在同一个(.+?)(?:时|，|$)/, (m) => ({ type: 'withFactionInRoom', faction: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
   // 「如果该宿舍内有其他干员」
   [/该宿舍内有其他干员|宿舍内有其他干员/, () => ({ type: 'otherMembersInRoom' })],
@@ -478,7 +491,12 @@ const CONDITION_RULES = [
   [/若(.+?)大于等于(.+?)，|若(.+?)大于(.+?)，/, (m) => ({ type: 'resourceCompare', left: m[1] || m[3], right: m[2] || m[4] })],
   [/每产生\d+次联络次数/, () => ({ type: 'onContact' })],
   [/每\d+次加工没有产出副产品/, () => ({ type: 'afterNoByproduct' })],
-  [/心情\d+以下的干员/, () => ({ type: 'dormLowMoodCount' })],
+  // 「宿舍内每有1名心情4以下的干员」是<b>计数</b>（人数决定倍率）；
+  // 「该宿舍内心情18以下的干员恢复效果额外+0.1」是对<b>目标干员的过滤</b>（每人各加一份）。
+  // 两种语义不能共用 dormLowMoodCount，否则过滤型会被按人数乘错。
+  [/心情(\d+)以下的干员/, (m) => (/每(?:有)?\s*\d*\s*名|每名/.test(String(m.input || ''))
+    ? { type: 'dormLowMoodCount', threshold: Number(m[1]) }
+    : { type: 'targetMoodBelow', threshold: Number(m[1]) })],
   [/完整协助完成\d+次专精训练|协助一名干员训练时长达\d+小时/, () => ({ type: 'assistSession' })],
 
 ]
@@ -548,6 +566,43 @@ function detectCap(text) {
   const m2 = text.match(/上限\s*(\d+(?:\.\d+)?)/)
   if (m2) return Number(m2[1])
   return null
+}
+
+// 计数域（countScope）：分母从句不再作为 condition 后，「在哪个房间/设施里数」这条信息
+// 没有别处承载。「宿舍内每有1名干员，热情值+1」的效果落在控制中枢，
+// 不显式记录就会被下游按"中枢内人数"计算。
+const COUNT_SCOPE_RULES = [
+  [/宿舍和活动室以外|宿舍与活动室以外/, { excludeRooms: ['DORMITORY', 'TRAINING'] }],
+  [/宿舍以外/, { excludeRooms: ['DORMITORY'] }],
+  [/宿舍内/, { room: 'DORMITORY' }],
+  [/进驻(?:在)?发电站|发电站/, { room: 'POWER' }],
+  [/进驻(?:在)?制造站|制造站内|制造站/, { room: 'MANUFACTURE' }],
+  [/进驻(?:在)?贸易站|贸易站内/, { room: 'TRADING' }],
+  [/控制中枢内|进驻(?:在)?控制中枢/, { room: 'CONTROL' }],
+  [/会客室内|进驻(?:在)?会客室/, { room: 'MEETING' }],
+  [/训练室内|进驻(?:在)?训练室/, { room: 'TRAINING' }],
+  [/加工站内|进驻(?:在)?加工站/, { room: 'WORKSHOP' }],
+]
+
+/** 从句子里抽出计数域；与效果自身房间相同则不算额外计数域。 */
+function detectCountScope(text, effect) {
+  // 只有"按 X 逐份叠加"（有 per）的效果才有计数域。
+  // 「所有宿舍内干员心情恢复+0.1」这类只作用于一批目标的效果，
+  // 房间范围已经由 room/target 表达，再记 countScope 只是噪声。
+  if (!effect || !effect.per) return null
+  const plain = stripMarkers(String(text || ''))
+  const out = {}
+  for (const [re, scope] of COUNT_SCOPE_RULES) {
+    if (!re.test(plain)) continue
+    if (scope.room) {
+      const sameRoom = effect.room === scope.room
+        // 「宿舍内每有1名干员」而效果 target 已是宿舍：房间域已由 target 表达
+        || (effect.target === 'dormitory' && scope.room === 'DORMITORY')
+      if (sameRoom) continue
+    }
+    Object.assign(out, scope)
+  }
+  return Object.keys(out).length ? out : null
 }
 
 function detectProduct(text, targets, roomType) {
@@ -968,6 +1023,11 @@ function parseBdExtra(buff, t, seg, allTokens) {
   // 该段的主指标若是产能类，则特殊资源只是附加，不单独成条
   const metric = findMetric(text, buff.roomType)
   if (metric && metric.type !== 'specialResource') return null
+  // 「每1点情报储备额外提升5%」：这里的资源是<b>分子口径</b>（按资源点数加成），
+  // 不是「情报储备+5」，不能生成 specialResource。
+  if (/额外(?:提升)?\s*[+-]?\d+(?:\.\d+)?\s*%/.test(text)) return null
+  // 「如果乌萨斯特饮达到4瓶」是条件（资源达到阈值），不是资源增减
+  if (/(?:达到|超过|低于|至少)\s*\d+\s*(?:瓶|点|个|层|级)/.test(text)) return null
   // "每有20点热情值，则额外+0.05"：N 是叠加分母，不是资源增益，
   // 交给 pendingCondition，否则会凭空生成"热情值+20"。
   // 但"每有1名X干员，则热情值+N" 是真的资源增益（bd 后有数字），要保留。
@@ -993,12 +1053,17 @@ function parseBdExtra(buff, t, seg, allTokens) {
   const conv = text.match(/转化为\s*\d+\s*(?:点|层|个)?\s*([\u4e00-\u9fa5]{2,6})/)
   // 转化句的资源 id 必须取「转化为」之后的那一个，否则会记成被消耗的资源
   let outBd = bd
+  // 转化源（被消耗的资源）也要单独记，否则只剩产出物、转化率无法计算
+  let srcBd = null
   if (conv) {
     const convRel = text.indexOf('转化为')
     const after = segTokens.filter((x) => x.kind === 'bd' && (x.rel != null ? x.rel : x.at) > convRel)
     if (after.length) outBd = after[after.length - 1]
+    const before = segTokens.filter((x) => x.kind === 'bd' && (x.rel != null ? x.rel : x.at) < convRel)
+    if (before.length) srcBd = before[before.length - 1]
   }
-  return {
+  const perInf = detectPer(text, segTokens)
+  const effect = {
     type: 'specialResource',
     room: buff.roomType,
     target: detectTarget(text).target,
@@ -1006,14 +1071,27 @@ function parseBdExtra(buff, t, seg, allTokens) {
     unit: 'points',
     resourceId: outBd.id,
     resourceName: outBd.text || BD_NAMES[outBd.id] || (conv ? conv[1] : null),
-    per: detectPer(text, segTokens)?.per || dormObj.per,
-    perValue: detectPer(text, segTokens)?.perValue ?? dormObj.perValue,
+    per: (perInf && perInf.per) || dormObj.per,
+    perValue: perInf && perInf.perValue != null ? perInf.perValue : dormObj.perValue,
     condition: detectCondition(text),
     cap: detectCap(text),
     stacking: detectStacking(text),
     source: buff.buffId,
     text: stripMarkers(text).trim(),
   }
+  if (srcBd) {
+    effect.sourceResourceId = srcBd.id
+    effect.sourceResourceName = srcBd.text || BD_NAMES[srcBd.id] || null
+  }
+  // 计数主体（阵营/标记）必须跟着一起走：「每个岁干员…则人间烟火+5」丢了 factionId
+  // 就完全不知道按谁计数。
+  if (perInf) {
+    if (perInf.factionId) { effect.factionId = perInf.factionId; effect.factionName = perInf.factionName }
+    if (perInf.tagId) { effect.tagId = perInf.tagId; effect.tagName = perInf.tagName }
+  }
+  const scope = detectCountScope(text, effect)
+  if (scope) effect.countScope = scope
+  return effect
 }
 
 // 深海猎人 / 部分技能的特殊加成（描述里只有概念链接，没有数值）
@@ -1176,6 +1254,14 @@ function parseBonusClause(buff, seg, allTokens, prevEffects) {
   if (prev.profession) effect.profession = prev.profession
   if (prev.professions) effect.professions = prev.professions
   if (per && per.per && per.per !== 'operator') { effect.per = per.per; if (per.perValue != null) effect.perValue = per.perValue }
+  // 「每1点情报储备额外+5%联络速度」/「每有10点人间烟火，则额外-0.01」：
+  // 分母口径（按哪种资源、哪个阵营、哪个标记计数）必须跟着效果走，
+  // 只留 per/perValue 会让两条不同的资源加成变成完全相同、或根本算不出结果。
+  if (per) {
+    if (per.resourceId) { effect.resourceId = per.resourceId; effect.resourceName = per.resourceName }
+    if (per.factionId) { effect.factionId = per.factionId; effect.factionName = per.factionName }
+    if (per.tagId) { effect.tagId = per.tagId; effect.tagName = per.tagName }
+  }
   const cap = detectCap(text)
   if (cap != null) effect.cap = cap
   return effect
@@ -1392,7 +1478,12 @@ export function parseBuff(buff) {
         if (pendingCondition.perValue != null && bonus.perValue == null) bonus.perValue = pendingCondition.perValue
         if (pendingCondition.cap != null && bonus.cap == null) bonus.cap = pendingCondition.cap
         if (pendingCondition.factionId && !bonus.factionId) bonus.factionId = pendingCondition.factionId
+        if (pendingCondition.factionName && !bonus.factionName) bonus.factionName = pendingCondition.factionName
         if (pendingCondition.tagId && !bonus.tagId) bonus.tagId = pendingCondition.tagId
+        if (pendingCondition.tagName && !bonus.tagName) bonus.tagName = pendingCondition.tagName
+        // 「每有10点人间烟火，则额外-0.01」：资源 id 在上一段，不继承就不知道按哪种资源结算
+        if (pendingCondition.resourceId && !bonus.resourceId) bonus.resourceId = pendingCondition.resourceId
+        if (pendingCondition.resourceName && !bonus.resourceName) bonus.resourceName = pendingCondition.resourceName
       }
       effects.push(bonus); pendingCondition = null; continue }
 
@@ -1612,7 +1703,16 @@ export function parseBuff(buff) {
     if (!c || (c.type !== 'trigger' && c.type !== 'other')) continue
     const t = String(c.text || '')
     let m = t.match(/宿舍内(?:每有\s*\d*\s*名)?心情\s*(\d+)\s*以下的干员/)
-    if (m) { e.condition = { type: 'dormLowMoodCount', threshold: Number(m[1]), text: c.text }; continue }
+    if (m) {
+      // 有「每有N名」是计数；没有就是"对这个心情区间的干员各加一份"的过滤
+      const counting = /每(?:有)?\s*\d*\s*名/.test(t)
+      e.condition = {
+        type: counting ? 'dormLowMoodCount' : 'targetMoodBelow',
+        threshold: Number(m[1]),
+        text: c.text,
+      }
+      continue
+    }
     m = t.match(/赤金交付数必定为\s*(\d+)/)
     if (m) { e.condition = { type: 'fixedDeliveryCount', count: Number(m[1]), text: c.text }; continue }
   }
@@ -1632,7 +1732,55 @@ export function parseBuff(buff) {
     // 从句里的「除自身以外」属于效果本身的范围，删条件前要先落到 excludeSelf 上，
     // 否则「每有1名除自身以外的莱茵生命干员」会从"不含自己"变成"含自己"。
     if (/除自身以外|除自身之外/.test(t) && !NO_EXCLUDE_SELF_LATE.has(e.type)) e.excludeSelf = true
+    // 删掉条件前，先把「在哪个房间/设施里数」落成 countScope，
+    // 否则「宿舍内每有1名干员」的效果落在控制中枢时会被按中枢内人数计算。
+    const scope = detectCountScope(t, e)
+    if (scope) e.countScope = { ...(e.countScope || {}), ...scope }
     delete e.condition
+  }
+
+  // 计数域再补一层：有些限定写在效果自身文本里（「进驻在宿舍和活动室以外的设施」），
+  // 条件从句并未承载它。
+  for (const e of effects) {
+    const src = String(e.text || '') + ' ' + String((e.condition && e.condition.text) || '')
+    const scope = detectCountScope(src, e)
+    if (scope) e.countScope = { ...(e.countScope || {}), ...scope }
+  }
+
+  // 「每有1个深海猎人干员进驻在宿舍以外的设施」：范围限定要落到条件上，
+  // 且与 per=factionMember/perValue=1 重复的 threshold 要去掉（同一件事写两遍，
+  // 下游既按 per 计数又按 threshold 门槛判，会双重计数）。
+  for (const e of effects) {
+    const c = e.condition
+    if (!c || c.type !== 'factionInFacility') continue
+    if (/宿舍以外/.test(String(c.text || '')) && !c.excludeRooms) c.excludeRooms = ['DORMITORY']
+    if (e.per === 'factionMember' && c.threshold != null) delete c.threshold
+  }
+
+  // 「当与乌萨斯学生自治团干员在同一个制造站时」：中文阵营名解析成 factionId，
+  // 由同一条描述的 <$cc.g.*> 标记给出，不另外硬编码映射表。
+  // 「当与怪物猎人小队干员进驻控制中枢一起工作时」里的怪物猎人小队是 <$cc.tag.mh>
+  // 标记（小队标签），不是阵营，改记 withTagInRoom，免得下游按阵营表查不到。
+  for (const e of effects) {
+    const c = e.condition
+    if (!c || c.type !== 'withFactionInRoom' || c.factionId) continue
+    const name = String(c.faction || '').trim()
+    const tok = t.tokens.find((x) => x.kind === 'faction' && stripMarkers(String(x.text || '')).trim() === name)
+    if (tok) { c.factionId = tok.id; c.factionName = name; continue }
+    const tag = t.tokens.find((x) => x.kind === 'tag' && stripMarkers(String(x.text || '')).trim() === name)
+    if (tag) {
+      c.type = 'withTagInRoom'
+      c.tagId = tag.id
+      c.tagName = name
+      delete c.faction
+    }
+  }
+
+  // 「（订单最少为1）」是订单上限的下限，删掉会被算成 0 或负数
+  for (const e of effects) {
+    if (e.type !== 'orderLimit' || e.min != null) continue
+    const m = String(e.text || '').match(/(?:最少|至少|下限)\s*为?\s*(\d+)/)
+    if (m) e.min = Number(m[1])
   }
 
   // 「每名行医干员为当前干员的专精技能训练速度+10%」：行医是分支，原文里没有标记，
@@ -1691,7 +1839,11 @@ export function parseBuff(buff) {
   const seenFx = new Set()
   const dedup = []
   for (const e of effects) {
-    const sig = [e.type, e.room, e.target, e.value, e.unit, e.product, e.per, e.perValue, e.subtype, e.forced, String(e.text)].join('|')
+    // 分母口径也算签名的一部分：「每1点情报储备+5%」与「每1瓶乌萨斯特饮+5%」
+    // 数值完全相同，去掉 resourceId 就会被去重成一条，两条资源加成变一条。
+    const sig = [e.type, e.room, e.target, e.value, e.unit, e.product, e.per, e.perValue,
+      e.subtype, e.forced, e.resourceId, e.sourceResourceId, e.factionId, e.tagId,
+      JSON.stringify(e.countScope || null), String(e.text)].join('|')
     if (seenFx.has(sig)) continue
     seenFx.add(sig)
     dedup.push(e)

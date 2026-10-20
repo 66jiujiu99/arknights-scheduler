@@ -204,8 +204,8 @@ export const CASES = [
   // ── S2 「X 转化为 Y」的资源 id 取产物 Y ─────────────────────────────────
   {
     buffId: 'manu_bd_to_bd[000]',
-    note: '人间烟火 → 巫术结晶，应记产物 bd_C',
-    expect: [{ resourceId: 'bd_C' }],
+    note: '人间烟火 → 巫术结晶，产物记 bd_C，转化源记 bd_b1，每 5 点换 1 点',
+    expect: [{ resourceId: 'bd_C', sourceResourceId: 'bd_b1', perValue: 5 }],
   },
 
   // ── 方向：训练时间减少 ≠ 训练速度 -50% ──────────────────────────────────
@@ -482,5 +482,122 @@ export const CASES = [
       _any: true, type: 'droneCharge', value: 5,
       condition: { type: 'charInRoom', char: '逻各斯', room: 'TRAINING' },
     }],
+  },
+  // ── 条件收敛复验（第四轮）：分母从句删掉后必须保留计数域/资源口径 ──────────
+  {
+    buffId: 'hire_spd_blitz[000]',
+    note: '闪击：情报储备与乌萨斯特饮两条 +5%，必须靠 resourceId 区分，不能被去重成一条',
+    expectLength: 3,
+    expect: [
+      { value: 20 },
+      { value: 5, per: 'resourcePoint', perValue: 1, resourceId: 'bd_ash' },
+      { value: 5, per: 'resourcePoint', perValue: 1, resourceId: 'bd_tachanka' },
+    ],
+  },
+  {
+    buffId: 'trade_cost&bd2[000]',
+    note: '铎铃：每10点人间烟火额外 -0.01，资源口径不能丢',
+    expect: [{ _any: true, value: 0.01, per: 'resourcePoint', perValue: 10, resourceId: 'bd_b1' }],
+  },
+  {
+    buffId: 'control_dorm_bd[000]',
+    note: '三角初华：效果在控制中枢，但计数域是「宿舍内」，必须显式记录',
+    expect: [{ _any: true, type: 'specialResource', per: 'operator', countScope: { room: 'DORMITORY' } }],
+  },
+  {
+    buffId: 'manu_token_prod_spd[000]',
+    note: '阿兰娜：作业平台要数「进驻发电站」的，计数域不能丢',
+    expect: [{ _any: true, type: 'productivity', tagId: 'op', countScope: { room: 'POWER' } }],
+  },
+  {
+    buffId: 'control_mp_cost&bd_up[000]',
+    note: '重岳：「每个岁干员」按阵营成员计数，且排除宿舍/活动室',
+    expect: [{
+      _any: true, type: 'specialResource', resourceId: 'bd_b1', cap: 5,
+      per: 'factionMember', factionId: 'sui', countScope: { excludeRooms: ['DORMITORY', 'TRAINING'] },
+    }],
+  },
+  {
+    buffId: 'manu_prod_spd_bd_n1[000]',
+    note: '迷迭香：转化句要同时记产出（bd_A）与转化源（bd_a1）',
+    expect: [{
+      _any: true, type: 'specialResource',
+      resourceId: 'bd_A', sourceResourceId: 'bd_a1', per: 'resourcePoint', perValue: 1,
+    }],
+  },
+  {
+    buffId: 'trade_ord_limit_count[000]',
+    note: '孑：订单上限有「最少为1」的下限，删条件时不能把下限一起丢掉',
+    expect: [{ _any: true, type: 'orderLimit', value: -1, min: 1 }],
+  },
+  {
+    buffId: 'trade_ord_spd&formula[000]',
+    note: '石英：数的是配方类别，不是干员人数',
+    expect: [{ _any: true, type: 'orderEfficiency', per: 'formulaType', countScope: { room: 'MANUFACTURE' } }],
+  },
+  {
+    buffId: 'dorm_rec_all&tired[000]',
+    note: '刺玫：「心情18以下的干员各+0.1」是目标过滤，不是按人数计数',
+    expect: [
+      { value: 0.15, condition: null },
+      { value: 0.1, condition: { type: 'targetMoodBelow', threshold: 18 } },
+    ],
+  },
+  {
+    buffId: 'workshop_formula_dorm[000]',
+    note: '「宿舍内每有1名心情4以下的干员」才是计数，仍需 dormLowMoodCount',
+    expect: [{ _any: true, condition: { type: 'dormLowMoodCount', threshold: 4 }, countScope: { room: 'DORMITORY' } }],
+  },
+  {
+    buffId: 'control_mp_aegir1[000]',
+    note: '歌蕾蒂娅：「宿舍以外」的范围要落到条件上，threshold 与 per 重复要去掉',
+    expect: [{
+      _any: true, type: 'moodCost',
+      condition: { type: 'factionInFacility', excludeRooms: ['DORMITORY'], threshold: null },
+    }],
+  },
+  {
+    buffId: 'manu_formula_spd&bd[001]',
+    note: '怒潮凛冬：同房间的是「阵营」不是具名干员，不能塞进 char',
+    expect: [{
+      _any: true, value: 10,
+      condition: { type: 'withFactionInRoom', factionId: 'ussg', room: 'MANUFACTURE', char: null },
+    }],
+  },
+  {
+    buffId: 'control_meeting&mp_cost[000]',
+    note: '摆渡人：萨尔贡是阵营，char 字段必须为空',
+    expect: [{
+      _any: true, type: 'moodCost',
+      condition: { type: 'withFactionInRoom', factionId: 'sargon', room: 'CONTROL', char: null },
+    }],
+  },
+  {
+    buffId: 'control_token_prod_spd2[000]',
+    note: '怪物猎人小队是 tag 标记（$cc.tag.mh），不是阵营',
+    expect: [{ _any: true, condition: { type: 'withTagInRoom', tagId: 'mh', room: 'CONTROL' } }],
+  },
+  {
+    buffId: 'trade_ord_spd&tag[010]',
+    note: '真言：「每有一间进驻精英干员的设施」按设施数叠加，不是按人',
+    expect: [{ _any: true, type: 'orderEfficiency', per: 'facilityCount', cap: 10, factionId: 'elite' }],
+  },
+  {
+    buffId: 'meet_spd_bd[000]',
+    note: '双月：「每1点情报储备额外提升5%」是线索搜集速度，不是产出情报储备',
+    expect: [
+      { value: 5, condition: null },
+      { value: 5, type: 'clueSpeed', per: 'resourcePoint', resourceId: 'bd_ash' },
+    ],
+  },
+  {
+    buffId: 'workshop_formula_frost[000]',
+    note: '霜华：三条都是副产品概率（50/5/15），且 15% 带「乌萨斯特饮达到4瓶」条件',
+    expectLength: 3,
+    expect: [
+      { type: 'workshopByproduct', value: 50 },
+      { type: 'workshopByproduct', value: 5, resourceId: 'bd_ash', per: 'resourcePoint' },
+      { type: 'workshopByproduct', value: 15, condition: { type: 'resourceAtLeast', threshold: 4 } },
+    ],
   },
 ]

@@ -19,7 +19,7 @@ const KNOWN_TARGETS = new Set([
 const KNOWN_PER = new Set([
   'factionMember', 'tagMember', 'operator', 'resourcePoint', 'powerStation', 'tradingStation',
   'dormitoryLevel', 'hireSlot', 'goldLine', 'token', 'skillClass', 'capacity', 'orderLimit',
-  'droneCap', 'efficiency', 'roomLevel', 'accumulate', 'facilityCount',
+  'droneCap', 'efficiency', 'roomLevel', 'accumulate', 'facilityCount', 'formulaType',
 ])
 const ROOMS = new Set(['CONTROL', 'POWER', 'MANUFACTURE', 'TRADING', 'DORMITORY', 'WORKSHOP', 'HIRE', 'TRAINING', 'RECYCLE', 'MEETING'])
 
