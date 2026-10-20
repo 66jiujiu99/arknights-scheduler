@@ -1,9 +1,11 @@
 // 开发用：对比两次生成的 operators.json，按 buffId 汇总 effects 变化
+// 用法：node docs/review/tools/diff.mjs [基线 revision，默认 HEAD]
 import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 
 const REPO = 'C:/Data/deepseek/arknights-scheduler'
-const base = JSON.parse(execSync('git show HEAD:public/data/v5/operators.json', { cwd: REPO, maxBuffer: 1 << 28 }).toString('utf8'))
+const REV = process.argv[2] || 'HEAD'
+const base = JSON.parse(execSync(`git show ${REV}:public/data/v5/operators.json`, { cwd: REPO, maxBuffer: 1 << 28 }).toString('utf8'))
 const now = JSON.parse(readFileSync(REPO + '/public/data/v5/operators.json', 'utf8'))
 
 const index = (db) => {

@@ -431,7 +431,8 @@ const CONDITION_RULES = [
   [/当与(.+?)一起进驻(.+?)时|当与(.+?)进驻(.+?)一起工作时/, (m) => ({ type: 'withCharInRoom', char: m[1] || m[3], room: ROOM_ALIASES[(m[2] || m[4] || '').trim()] || null })],
   [/与其他(.+?)干员进驻(.+?)一起工作/, (m) => ({ type: 'withCharInRoom', char: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
   [/当(.+?)入驻(.+?)时/, (m) => ({ type: 'charInRoom', char: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
-  [/如果(.+?)进驻在(.+?)[，）]|如果(.+?)进驻(.+?)时/, (m) => ({ type: 'charInRoom', char: m[1] || m[3], room: ROOM_ALIASES[(m[2] || m[4] || '').trim()] || null })],
+  // 「如果有2台以上作业平台进驻在发电站」讲的是数量/TAG，不是某个具名干员，别被下面这条抢走
+  [/如果(?!\d+台以上)(.+?)进驻在(.+?)(?:[，）]|$)|如果(.+?)进驻(.+?)时/, (m) => ({ type: 'charInRoom', char: m[1] || m[3], room: ROOM_ALIASES[(m[2] || m[4] || '').trim()] || null })],
   [/如果目标是(.+?)，则|如果目标是(.+?)$/, (m) => ({ type: 'targetIs', text: m[1] || m[2] })],
   [/若(.+?)大于等于(.+?)，|若(.+?)大于(.+?)，/, (m) => ({ type: 'resourceCompare', left: m[1] || m[3], right: m[2] || m[4] })],
   [/每产生\d+次联络次数/, () => ({ type: 'onContact' })],
@@ -1087,6 +1088,10 @@ function parseBonusClause(buff, seg, allTokens, prevEffects) {
     text: stripMarkers(text).trim(),
   }
   if (prev.product) effect.product = prev.product
+  // 「协助狙击干员…至2级，则训练速度额外+45%」：后半句同样只对同一职业生效，
+  // 不继承就会退化成任意职业都加 45%。
+  if (prev.profession) effect.profession = prev.profession
+  if (prev.professions) effect.professions = prev.professions
   if (per && per.per && per.per !== 'operator') { effect.per = per.per; if (per.perValue != null) effect.perValue = per.perValue }
   const cap = detectCap(text)
   if (cap != null) effect.cap = cap
@@ -1195,7 +1200,14 @@ export function parseBuff(buff) {
     const className = buff.buffId.replace(/\[\d+\]$/, '')
 
     const fc = parseFacilityCount(buff, t, seg, t.tokens)
-    if (fc) { effects.push(fc); pendingCondition = null; continue }
+    if (fc) {
+      // 「如果Lancet-2进驻在发电站，发电站额外+2（仅影响设施数量）」：
+      // 条件在上一段，不能因为这条自带指标就把前置条件丢掉。
+      if (pendingCondition && pendingCondition.condition && !fc.condition) {
+        fc.condition = pendingCondition.condition
+      }
+      effects.push(fc); pendingCondition = null; continue
+    }
 
     const bias = parseMeetingExtra(buff, t)
     if (bias && CLUE_BIAS_RE.test(seg.text) && !findMetric(seg.text, buff.roomType)) { effects.push(bias); pendingCondition = null; continue }
@@ -1269,6 +1281,10 @@ export function parseBuff(buff) {
         // 条件从句里往往同时带着叠加维度（「每个进驻在贸易站的谢拉格干员」），
         // 必须一并传递，否则阵营叠加信息会整条丢失。
         const perInf = detectPer(seg.text, tokensIn(t.tokens, seg))
+        // 「协助狙击干员训练专精技能至1级时」：职业限制在条件从句里，效果主体在下一段。
+        const profs = buff.roomType === 'TRAINING'
+          ? detectProfessions(seg.text, tokensIn(t.tokens, seg))
+          : []
         pendingCondition = {
           condition: condOnly,
           per: perInf ? perInf.per : null,
@@ -1278,6 +1294,8 @@ export function parseBuff(buff) {
           tagId: perInf ? perInf.tagId : null,
           tagName: perInf ? perInf.tagName : null,
           cap: detectCap(seg.text),
+          profession: profs[0] || null,
+          professions: profs.length > 1 ? profs : null,
         }
         continue
       }
@@ -1333,6 +1351,12 @@ export function parseBuff(buff) {
         if (pendingCondition.per && !e.per) e.per = pendingCondition.per
         if (pendingCondition.perValue != null && e.perValue == null) e.perValue = pendingCondition.perValue
         if (pendingCondition.product && !e.product) e.product = pendingCondition.product
+        // 「协助狙击干员训练专精技能至1级时，心情每小时消耗+1」：职业限制在条件从句里，
+        // 不传给效果主体就等于没有职业限制。
+        if (pendingCondition.profession && !e.profession && !e.professions) {
+          e.profession = pendingCondition.profession
+          if (pendingCondition.professions) e.professions = pendingCondition.professions
+        }
       }
       effects.push(e)
     } else {
@@ -1359,7 +1383,16 @@ export function parseBuff(buff) {
         }
       // "如训练室有干员在进行技能专精"：纯条件，存为 pendingCondition 供后续效果挂载
       if (!effects.length && condOnly && !findMetric(seg.text, buff.roomType)) {
-        pendingCondition = { condition: condOnly, per: null, perValue: null }
+        const profs = buff.roomType === 'TRAINING'
+          ? detectProfessions(seg.text, tokensIn(t.tokens, seg))
+          : []
+        pendingCondition = {
+          condition: condOnly,
+          per: null,
+          perValue: null,
+          profession: profs[0] || null,
+          professions: profs.length > 1 ? profs : null,
+        }
         continue
       }
       } else if (!isPreamble(seg.text)) {
