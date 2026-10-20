@@ -313,4 +313,64 @@ export const CASES = [
       condition: { type: 'needsOtherOperatorInRoom' },
     }],
   },
+
+  // ── 无数字的「质变型」指标：订单品质 ──────────────────────────────────
+  {
+    buffId: 'trade_ord_wt&cost[000]',
+    note: '柏喙·裁缝α：小幅提升高品质贵金属订单概率——原文没有百分比，用 level 表达档位',
+    expectLength: 2,
+    expect: [
+      {
+        _any: true, type: 'orderQuality', value: 1, unit: 'flag', level: 'small',
+        product: '贵金属', condition: { type: 'workTimeAffectsProbability' },
+      },
+      { _any: true, type: 'moodCostReduction', value: 0.25 },
+    ],
+  },
+  {
+    buffId: 'trade_ord_wt&cost[010]',
+    note: '柏喙·裁缝β：「提升」（没有「小幅」）比 α 高一档 → level normal',
+    expect: [{ _any: true, type: 'orderQuality', level: 'normal', product: '贵金属' }],
+  },
+
+  // ── 暖机句式（无「首小时」） ─────────────────────────────────────────
+  {
+    buffId: 'manu_prod_spd_addition[100]',
+    note: '阿罗玛：生产力每小时+2%，最终达到+20% —— 必须是 1 条 effect，value 取最终值',
+    expectLength: 1,
+    expect: [{
+      type: 'productivity', value: 20, warmup: true,
+      addition: { initial: 2, step: 2, final: 20 },
+    }],
+  },
+
+  // ── 加工站强制副产品与 T3 前提 ───────────────────────────────────────
+  {
+    buffId: 'workshop_formula_drop[020]',
+    note: '洛洛：「聚酸酯组」的「组」是材料名的一部分，不能剥掉；T3 前提要结构化',
+    expectLength: 1,
+    expect: [{
+      type: 'workshopByproduct', subtype: 'forceByproduct', forced: '聚酸酯组',
+      condition: { type: 'byproductTier', threshold: 3 },
+    }],
+  },
+
+  // ── 特殊资源 id ─────────────────────────────────────────────────────
+  {
+    buffId: 'manu_prod_bd[000]',
+    note: '导火索：每有1瓶乌萨斯特饮 → per=resourcePoint 且必须知道是哪种资源',
+    expect: [{ _any: true, type: 'capacity', per: 'resourcePoint', resourceId: 'bd_tachanka', resourceName: '乌萨斯特饮' }],
+  },
+
+  // ── flag 类 value 统一为 1 ───────────────────────────────────────────
+  {
+    buffId: 'trade_ord_vodfox[000]',
+    note: '巫恋：其他干员订单效率全部归零——归零语义在 resets，value 应为 1',
+    expect: [{ _any: true, type: 'resetOthers', value: 1, resets: 'orderEfficiency' }],
+  },
+  {
+    buffId: 'dorm_exchangeAp[000]',
+    note: '菲亚梅塔：互换心情是布尔机制，value 应为 1',
+    expect: [{ _any: true, type: 'moodExchange', value: 1 }],
+  },
 ]

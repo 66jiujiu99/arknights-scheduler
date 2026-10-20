@@ -99,6 +99,8 @@ const BD_NAMES = {
   bd_a1_a3: '小节', bd_B: '无声共鸣', bd_C: '巫术结晶', bd_A: '思维链环',
   bd_malist: '工程机器人', bd_mujica: '热情值', bd_ash: '情报储备', bd_felyne: '木天蓼',
   bd_tachanka: '乌萨斯特饮', bd_dungeon: '魔物料理', bd_wang_1: '外势', bd_wang_2: '实地',
+  // 原始标记里唯一带点号的一个（<$cc.bd.costdrop>），按标记原文保留
+  'bd.costdrop': '心情落差',
 }
 
 export const EFFECT_TYPES = [
@@ -556,6 +558,11 @@ function detectAddition(text, segTokens) {
   const re3 = new RegExp('此后每小时[^0-9+-]{0,4}([+-]?\\d+(?:\\.\\d+)?)\\s*%')
   const m3 = text.match(re3)
   if (m3) return { step: Number(m3[1]) }
+  // 「生产力每小时+2%，最终达到+20%」：没有「首小时」，第一个小时就是 +2%，
+  // 所以 initial 与 step 相同（第 10 小时恰好到 +20%）。
+  const re4 = new RegExp('每小时[^0-9+-]{0,4}([+-]?\\d+(?:\\.\\d+)?)\\s*%' + sep + '最终达到[^0-9+-]{0,4}([+-]?\\d+(?:\\.\\d+)?)\\s*%')
+  const m4 = text.match(re4)
+  if (m4) return { initial: Number(m4[1]), step: Number(m4[1]), final: Number(m4[2]) }
   return null
 }
 
@@ -740,6 +747,21 @@ function parseSegment(buff, seg, allTokens, ctx) {
       stacking: 'stack',
       source: buff.buffId,
       text: stripMarkers(text).trim(),
+    }
+  }
+
+  // —— 质变型指标：原文只有程度词（「小幅提升/提升…的出现概率」），整段没有任何百分比。
+  // 用 level 表达档位、value 保持 flag 语义 1；凭空补一个百分比会污染排班收益计算。
+  const QUALITATIVE_TYPES = new Set(['orderQuality'])
+  if (QUALITATIVE_TYPES.has(metric.type) && !nums.some((t) => !isThresholdNum(t))) {
+    const plainSeg = stripMarkers(text)
+    effect.value = 1
+    effect.unit = 'flag'
+    effect.level = /小幅提升|略微提升|小幅提高/.test(plainSeg) ? 'small' : 'normal'
+    const prod = detectProduct(plainSeg, buff.targets, roomType)
+    if (prod) effect.product = prod
+    if (/工作时长影响概率|工作时长和招募位影响概率/.test(plainSeg)) {
+      effect.condition = { type: 'workTimeAffectsProbability', text: plainSeg.trim() }
     }
   }
 
@@ -1140,11 +1162,16 @@ function fallbackEffects(buff, t) {
       stacking: 'stack', source: buff.buffId, text: stripMarkers(plain).trim() }]
   }
   // 加工站：T3 副产品必定为某材料
-  const drop = plain.match(/副产品必定为(.+?)(?:组)?$/)
+  // 「必定为聚酸酯组」里的「组」是材料名的一部分（聚酸酯组 ≠ 聚酸酯），不能用可选组吃掉。
+  const drop = plain.match(/副产品必定为(.+?)$/)
   if (drop) {
+    // 「产出T3品质的副产品时」是前置条件，T3 是普通关键词不是数字，之前整条丢失。
+    const tier = plain.match(/产出\s*T(\d)\s*品质的副产品/)
     return [{ type: 'workshopByproduct', target: 'room', value: 1, unit: 'flag',
-      subtype: 'forceByproduct', forced: drop[1].trim(),
-      product: detectProduct(plain, buff.targets, buff.roomType), ...common }]
+      subtype: 'forceByproduct', forced: drop[1].replace(/[。；，]$/, '').trim(),
+      product: detectProduct(plain, buff.targets, buff.roomType),
+      condition: tier ? { type: 'byproductTier', threshold: Number(tier[1]), text: stripMarkers(plain).trim() } : undefined,
+      ...common }]
   }
   // 技能类别转换（莱茵科技/红松骑士团 视为标准化）
   if (/视作标准化类技能/.test(plain)) {
@@ -1318,6 +1345,8 @@ export function parseBuff(buff) {
         factionName: denom.denominator.factionName,
         tagId: denom.denominator.tagId,
         tagName: denom.denominator.tagName,
+        resourceId: denom.denominator.resourceId,
+        resourceName: denom.denominator.resourceName,
         cap: denom.denominator.cap,
       }
       continue
@@ -1347,6 +1376,10 @@ export function parseBuff(buff) {
         if (pendingCondition.factionName && !e.factionName) e.factionName = pendingCondition.factionName
         if (pendingCondition.tagId && !e.tagId) e.tagId = pendingCondition.tagId
         if (pendingCondition.tagName && !e.tagName) e.tagName = pendingCondition.tagName
+        // 「每有1瓶乌萨斯特饮，则仓库容量上限+2」：特殊资源的 id 在分母从句里，
+        // 不传给效果主体就只剩 per=resourcePoint 却不知道是什么资源。
+        if (pendingCondition.resourceId && !e.resourceId) e.resourceId = pendingCondition.resourceId
+        if (pendingCondition.resourceName && !e.resourceName) e.resourceName = pendingCondition.resourceName
         if (pendingCondition.cap != null && e.cap == null) e.cap = pendingCondition.cap
         if (pendingCondition.per && !e.per) e.per = pendingCondition.per
         if (pendingCondition.perValue != null && e.perValue == null) e.perValue = pendingCondition.perValue
@@ -1380,6 +1413,8 @@ export function parseBuff(buff) {
           cap: detectCap(seg.text),
           per: per ? per.per : null,
           perValue: per ? per.perValue : null,
+          resourceId: per ? per.resourceId : null,
+          resourceName: per ? per.resourceName : null,
         }
       // "如训练室有干员在进行技能专精"：纯条件，存为 pendingCondition 供后续效果挂载
       if (!effects.length && condOnly && !findMetric(seg.text, buff.roomType)) {
@@ -1435,6 +1470,28 @@ export function parseBuff(buff) {
       const src = String(e.text || "") + " " + String((e.condition && e.condition.text) || "")
       const m = src.match(/每(?:有)?\s*(\d+(?:\.\d+)?)/)
       if (m) e.perValue = Number(m[1])
+    }
+  }
+
+  // 「生产力每小时+2%，最终达到+20%」（无「首小时」）：分段后变成 2% 与 20% 两条独立效果，
+  // 全文再匹配一次暖机句式，合并成一条 warmup 效果（value 取最终值）。
+  const plainAll = stripMarkers(t.plain).trim()
+  if (!/首小时|此后每小时/.test(plainAll)) {
+    const wholeAdd = detectAddition(plainAll, [])
+    if (wholeAdd && wholeAdd.initial != null && wholeAdd.final != null) {
+      const keep = effects.find((e) => e.addition == null
+        && (Math.abs(Number(e.value)) === Math.abs(wholeAdd.final) || Math.abs(Number(e.value)) === Math.abs(wholeAdd.initial)))
+      if (keep) {
+        for (let i = effects.length - 1; i >= 0; i -= 1) {
+          const e = effects[i]
+          if (e === keep || e.addition != null || e.type !== keep.type) continue
+          const v = Math.abs(Number(e.value))
+          if (v === Math.abs(wholeAdd.step) || v === Math.abs(wholeAdd.final)) effects.splice(i, 1)
+        }
+        keep.addition = wholeAdd
+        keep.value = Math.abs(wholeAdd.final)
+        keep.warmup = true
+      }
     }
   }
 
@@ -1521,6 +1578,12 @@ export function parseBuff(buff) {
       last.condition.numbers = [...(last.condition.numbers || []), ...lost]
     }
   }
+  // flag 类效果的 value 不承载数值（语义由 type 承担），统一规范化为 1。
+  // 留 0 会被下游的 `if (value)` 当成"没有效果"，且与"数值真的是 0"无法区分。
+  for (const e of effects) {
+    if (e.unit === 'flag') e.value = 1
+  }
+
   // 人工确证的个例修正：句式不规则，用通用正则去修的风险高于收益，见 effect-overrides.mjs
   const override = EFFECT_OVERRIDES[buff.buffId]
   if (override) {
