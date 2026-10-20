@@ -85,11 +85,13 @@ export const EFFECT_OVERRIDES = {
 
   // 「每有一间进驻精英干员的设施，联络速度额外+4%（最多5间）」
   // 按「设施数」计数，不是按干员人数；原 per=factionMember 会在同设施多人时重复计数。
+  // 阵营约束记在效果级 factionId 上（与真言的 trade_ord_spd&tag[010] 同口径），
+  // 不再另挂一个只做过滤的 condition.factionInFacility。
   'hire_spd_tag[000]': {
     note: '按设施数叠加（每间设施 +4%，最多 5 间）',
     effects: [
       { type: 'hireSpeed', room: 'HIRE', unit: 'percent', target: 'room', value: 30, stacking: 'stack' },
-      { type: 'hireSpeed', room: 'HIRE', unit: 'percent', target: 'room', value: 4, per: 'facilityCount', cap: 5, condition: { type: 'factionInFacility', factionId: 'elite', factionName: '精英干员' }, stacking: 'stack' },
+      { type: 'hireSpeed', room: 'HIRE', unit: 'percent', target: 'room', value: 4, per: 'facilityCount', cap: 5, factionId: 'elite', factionName: '精英干员', stacking: 'stack' },
     ],
   },
 
@@ -99,6 +101,21 @@ export const EFFECT_OVERRIDES = {
     effects: [
       { type: 'moodRecovery', room: 'DORMITORY', unit: 'perHour', target: 'dormitory', excludeSelf: true, value: 0.55, condition: { type: 'targetMoodNotFull' }, stacking: 'max' },
       { type: 'moodRecovery', room: 'DORMITORY', unit: 'perHour', target: 'dormitory', excludeSelf: true, value: 0.45, condition: { type: 'targetIs', tagIds: ['mh', 'mh2'], tagNames: ['怪物猎人小队', '泡影国狩猎小队'] }, stacking: 'stack' },
+    ],
+  },
+
+  // 「每完整协助完成1次专精训练，累计一定武道。武道达到上限时，下一次开始协助
+  // **近卫**干员训练专精技能至**1**级将立即完成」：职业与等级都在正文里，
+  // 但整句被并进 condition.text，原解析只留 assistSession，任意职业都会触发"立即完成"。
+  'train_spd_bd&reduceTime[000]': {
+    note: '立即完成只对近卫干员的 1 级专精生效，且需武道攒满',
+    effects: [
+      {
+        type: 'trainingSpeed', room: 'TRAINING', target: 'trainee', value: 1, unit: 'flag', subtype: 'instantComplete',
+        resourceName: '武道', profession: '近卫',
+        condition: { type: 'trainToLevel', level: 1, extra: [{ type: 'assistSession' }] },
+        stacking: 'stack',
+      },
     ],
   },
 }

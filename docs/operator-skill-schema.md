@@ -80,7 +80,7 @@
 | `target` | self / room / roomMembers / control / dormitory / otherFacilities / partialFacilities / allManufacture / allTrading / allDormitory / meeting / hire / trainingRoom / trainee / facilityCount |
 | `value` | 数值。心情类恒为正、方向由 type 表达；orderLimit 可正可负；flag 类为 1 |
 | `unit` | percent / perHour / orders / slots / count / mood / probability / points / flat / flag |
-| `product` | 产物筛选：贵金属 / 作战记录 / 源石 / 技巧概要 / 精英材料 / 基建材料 / 芯片 |
+| `product` | 产物筛选：贵金属 / 作战记录 / 源石 / 技巧概要 / 精英材料 / 基建材料 / 芯片 / 晶体 / 任意类材料 |
 | `per` | 叠加单位：factionMember / tagMember / operator / resourcePoint / powerStation / tradingStation / hireSlot / goldLine / token / skillClass / capacity / orderLimit / droneCap / efficiency / roomLevel / formulaType（每种配方类别）/ facilityCount（每间满足条件的设施） |
 | `perValue` | “每 N”里的 N，缺省 1 |
 | `factionId` / `tagId` / `profession` | 触发主体筛选 |
@@ -88,20 +88,25 @@
 | `sourceResourceId` / `sourceResourceName` | 转化类：被消耗的资源（例：每 1 点**感知信息** → 1 点思维链环，`resourceId` 记产物、本字段记来源） |
 | `countScope` | 计数域：`{ room }` 表示“在哪个房间里数”（例：宿舍内每有 1 名干员 → `{room:"DORMITORY"}`）；`{ excludeRooms }` 表示“排除哪些房间”（例：进驻在宿舍以外的设施 → `{excludeRooms:["DORMITORY"]}`） |
 | `min` | 数值下限（例：订单上限 -1，但「订单最少为1」→ `min: 1`） |
+| `excludeAssist` | `true` = 该计数不含副手与活动室使用者（原文「基建内（不包含副手及活动室使用者）」；两者本仓库未建模，只能用标志位表达） |
+| `orderTypeId` / `orderTypeName` | 固定获取的订单类型（来自 `<$cc.tra.*>` 标记：`pepe` 特别独占订单、`closure` 可露希尔特别订单） |
+| `ignoreOrderEfficiency` | `true` = 该类订单不受订单获取效率影响（佩佩「不受任何订单获取效率的影响」） |
 | `cap` | 叠加上限（最多 N / 上限 N） |
 | `condition` | { type, text, threshold?, char?, room?, faction? / factionId?, tagId?, excludeRooms?, branch?, level?, hours?, extra? } |
 | `stacking` | stack（叠加）/ max（同种取最高）/ maxPerTarget / unique / special |
 | `addition` | 暖机类：{ initial, step, final } |
 | `source` / `text` | 来源 buffId 与中文片段，便于人工核对 |
 
-### 关于 `countScope` / `resourceId` / `min`
+### 关于 `countScope` / `resourceId` / `min` / `excludeAssist`
 
 分母从句（「每有 N 点 X」「宿舍内每有 1 名干员」）不写成 `condition`——否则下游会把“每 N”再当成一层触发条件。
-但删掉 condition 后，这三类信息没有别处承载，必须显式落字段：
+但删掉 condition 后，这几类信息没有别处承载，必须显式落字段：
 
 - **在哪个房间数** → `countScope.room`。效果房间与计数房间经常不同（三角初华在控制中枢、按宿舍人数加热情值）。
+  `per` 本身就是房间单位时（`powerStation`/`facilityCount`）不再重复记。
 - **按哪种资源结算** → `resourceId`；转化类还要写 `sourceResourceId`，否则只剩产物、转化率算不出来。
 - **边界值** → `min`。孑「订单上限 -1（订单最少为1）」少了下限就会被算成 0 或负数。
+- **谁不算进计数** → `excludeAssist`。副手与活动室使用者在本仓库未建模，只能做标志位。
 
 ## effect type 一览
 

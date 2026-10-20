@@ -124,6 +124,8 @@ function classify(inner, text) {
   if (inner.startsWith('$cc.g.')) return { kind: 'faction', id: inner.slice(6), text }
   if (inner.startsWith('$cc.tag.')) return { kind: 'tag', id: inner.slice(8), text }
   if (inner.startsWith('$cc.bd')) return { kind: 'bd', id: inner.slice(4), text }
+  // 「固定获取 <$cc.tra.pepe>特别独占订单」：订单类型 id 只存在这个标记里
+  if (inner.startsWith('$cc.tra.')) return { kind: 'orderType', id: inner.slice(8), text }
   if (inner.startsWith('$cc.c.')) return { kind: 'concept', id: inner.slice(6), text }
   if (inner.startsWith('$cc.sk.')) return { kind: 'skillClass', id: inner.slice(6), text }
   if (inner === '$cc.gvial') return { kind: 'char', text }
@@ -572,7 +574,9 @@ function detectCap(text) {
 // 没有别处承载。「宿舍内每有1名干员，热情值+1」的效果落在控制中枢，
 // 不显式记录就会被下游按"中枢内人数"计算。
 const COUNT_SCOPE_RULES = [
-  [/宿舍和活动室以外|宿舍与活动室以外/, { excludeRooms: ['DORMITORY', 'TRAINING'] }],
+  // 「宿舍和活动室以外」：活动室（PRIVATE）在本仓库未建模、也不可进驻，
+  // 能排除的只有宿舍。写成 TRAINING 会把训练室协助位也算成"以外"，是真的漏算。
+  [/宿舍和活动室以外|宿舍与活动室以外/, { excludeRooms: ['DORMITORY'] }],
   [/宿舍以外/, { excludeRooms: ['DORMITORY'] }],
   [/宿舍内/, { room: 'DORMITORY' }],
   [/进驻(?:在)?发电站|发电站/, { room: 'POWER' }],
@@ -590,6 +594,8 @@ function detectCountScope(text, effect) {
   // 「所有宿舍内干员心情恢复+0.1」这类只作用于一批目标的效果，
   // 房间范围已经由 room/target 表达，再记 countScope 只是噪声。
   if (!effect || !effect.per) return null
+  // per 本身已经是"房间/设施"单位时（每间发电站、每间设施），再记一遍房间就是同一件事写两遍
+  if (effect.per === 'powerStation' || effect.per === 'facilityCount') return null
   const plain = stripMarkers(String(text || ''))
   const out = {}
   for (const [re, scope] of COUNT_SCOPE_RULES) {
@@ -1740,11 +1746,16 @@ export function parseBuff(buff) {
   }
 
   // 计数域再补一层：有些限定写在效果自身文本里（「进驻在宿舍和活动室以外的设施」），
-  // 条件从句并未承载它。
+  // 条件从句并未承载它。条件上已经写了同样的排除范围时不再重复。
   for (const e of effects) {
     const src = String(e.text || '') + ' ' + String((e.condition && e.condition.text) || '')
     const scope = detectCountScope(src, e)
-    if (scope) e.countScope = { ...(e.countScope || {}), ...scope }
+    if (!scope) continue
+    if (scope.excludeRooms && e.condition && Array.isArray(e.condition.excludeRooms)
+      && scope.excludeRooms.every((r) => e.condition.excludeRooms.includes(r))) {
+      delete scope.excludeRooms
+    }
+    if (Object.keys(scope).length) e.countScope = { ...(e.countScope || {}), ...scope }
   }
 
   // 「每有1个深海猎人干员进驻在宿舍以外的设施」：范围限定要落到条件上，
@@ -1755,24 +1766,66 @@ export function parseBuff(buff) {
     if (!c || c.type !== 'factionInFacility') continue
     if (/宿舍以外/.test(String(c.text || '')) && !c.excludeRooms) c.excludeRooms = ['DORMITORY']
     if (e.per === 'factionMember' && c.threshold != null) delete c.threshold
+    // 条件上已经写明排除范围，效果级 countScope 再写一遍会让下游重复排除
+    if (e.countScope && Array.isArray(e.countScope.excludeRooms) && Array.isArray(c.excludeRooms)
+      && e.countScope.excludeRooms.every((r) => c.excludeRooms.includes(r))) {
+      delete e.countScope.excludeRooms
+      if (!Object.keys(e.countScope).length) delete e.countScope
+    }
   }
 
-  // 「当与乌萨斯学生自治团干员在同一个制造站时」：中文阵营名解析成 factionId，
-  // 由同一条描述的 <$cc.g.*> 标记给出，不另外硬编码映射表。
-  // 「当与怪物猎人小队干员进驻控制中枢一起工作时」里的怪物猎人小队是 <$cc.tag.mh>
-  // 标记（小队标签），不是阵营，改记 withTagInRoom，免得下游按阵营表查不到。
+  // 条件里的中文阵营名/标签名统一解析成 id，由同一条描述的 <$cc.g.*> / <$cc.tag.*>
+  // 标记给出，不另外硬编码映射表。顺带修「阵营名被塞进 char」：
+  // 「与其他萨米干员进驻会客室一起工作」「如果其他拉特兰干员进驻在发电站」。
+  // 「怪物猎人小队」这类是 <$cc.tag.mh>（小队标签）而不是阵营，记 withTagInRoom。
+  const tokenByName = (name) => {
+    const norm = (v) => stripMarkers(String(v || '')).trim()
+      .replace(/^其他/, '').replace(/(?:干员|平台)$/, '')
+    const n = norm(name)
+    if (!n) return null
+    return t.tokens.find((x) => (x.kind === 'faction' || x.kind === 'tag') && norm(x.text) === n) || null
+  }
   for (const e of effects) {
     const c = e.condition
-    if (!c || c.type !== 'withFactionInRoom' || c.factionId) continue
-    const name = String(c.faction || '').trim()
-    const tok = t.tokens.find((x) => x.kind === 'faction' && stripMarkers(String(x.text || '')).trim() === name)
-    if (tok) { c.factionId = tok.id; c.factionName = name; continue }
-    const tag = t.tokens.find((x) => x.kind === 'tag' && stripMarkers(String(x.text || '')).trim() === name)
-    if (tag) {
-      c.type = 'withTagInRoom'
-      c.tagId = tag.id
-      c.tagName = name
-      delete c.faction
+    if (!c) continue
+    if ((c.type === 'withCharInRoom' || c.type === 'charInRoom') && c.char) {
+      const raw = String(c.char).trim()
+      const tok = tokenByName(raw)
+      if (tok) {
+        const label = stripMarkers(String(tok.text || '')).trim()
+        delete c.char
+        if (tok.kind === 'faction') {
+          // 有的标记自带「干员」（<$cc.g.bs>黑钢国际干员</>），字段里只留派系名
+          const name = label.replace(/干员$/, '')
+          c.type = 'withFactionInRoom'
+          c.faction = name
+          c.factionId = tok.id
+          c.factionName = name
+        } else {
+          c.type = 'withTagInRoom'
+          c.tagId = tok.id
+          c.tagName = label
+        }
+        // 「与其他 X 干员一起工作」的"其他"是排除自身，落在条件上（不是效果范围）
+        if (/其他/.test(raw) || /^与其他|其他.+干员/.test(String(c.text || ''))) c.excludeSelf = true
+      }
+    }
+    if (['factionInFacility', 'dormFactionMoodFull', 'withFactionInRoom', 'factionCountAtLeast'].includes(c.type)
+      && !c.factionId) {
+      const tok = tokenByName(c.faction)
+      if (tok) {
+        const label = stripMarkers(String(tok.text || '')).trim()
+        if (tok.kind === 'tag') {
+          // 「怪物猎人小队」是 <$cc.tag.mh> 小队标签，不是阵营
+          c.type = 'withTagInRoom'
+          c.tagId = tok.id
+          c.tagName = label
+          delete c.faction
+        } else {
+          c.factionId = tok.id
+          c.factionName = label.replace(/干员$/, '')
+        }
+      }
     }
   }
 
@@ -1781,6 +1834,18 @@ export function parseBuff(buff) {
     if (e.type !== 'orderLimit' || e.min != null) continue
     const m = String(e.text || '').match(/(?:最少|至少|下限)\s*为?\s*(\d+)/)
     if (m) e.min = Number(m[1])
+  }
+
+  // 「基建内（不包含副手及活动室使用者）每有1名X干员」：这类计数不含副手与活动室使用者。
+  // 副手、活动室(PRIVATE)在本仓库都未建模，只能用标志位表达，避免下游把副手也算进人数。
+  if (/不包含副手/.test(plainAll)) {
+    for (const e of effects) {
+      // 只作用于"按人数/设施数在基建范围内计数"的那类效果；
+      // 同一 buff 里「控制中枢内所有干员心情恢复」是另一句，不受该限定影响。
+      const baseWide = ['base', 'otherFacilities', 'partialFacilities',
+        'allDormitory', 'allManufacture', 'allTrading'].includes(String(e.target || ''))
+      if (e.per || baseWide) e.excludeAssist = true
+    }
   }
 
   // 「每名行医干员为当前干员的专精技能训练速度+10%」：行医是分支，原文里没有标记，
@@ -1804,6 +1869,26 @@ export function parseBuff(buff) {
         const m = src.match(/每(?:有)?\s*(\d+)/)
         e.perValue = m ? Number(m[1]) : 1
       }
+    }
+  }
+
+  // 「固定获取 <$cc.tra.pepe>特别独占订单（不视作违约订单）」：订单类型 id 只在标记里，
+  // 不落字段就分不清"特别独占订单"与"可露希尔特别订单"。
+  const orderTypeTok = t.tokens.find((x) => x.kind === 'orderType')
+  for (const e of effects) {
+    if (e.type !== 'fixedOrder') continue
+    if (orderTypeTok && !e.orderTypeId) {
+      e.orderTypeId = orderTypeTok.id
+      e.orderTypeName = stripMarkers(String(orderTypeTok.text || '')).trim()
+    }
+    if (/不受任何订单获取效率的影响|不受订单获取效率影响/.test(plainAll)) e.ignoreOrderEfficiency = true
+  }
+  // 「赤金订单」是贵金属类订单：product 不记就会作用到任意订单上
+  for (const e of effects) {
+    if (e.product) continue
+    if (!['orderValue', 'fixedOrder', 'orderLimit', 'orderQuality', 'orderEfficiency'].includes(e.type)) continue
+    if (/赤金订单/.test(String(e.text || '') + ' ' + String((e.condition && e.condition.text) || ''))) {
+      e.product = '贵金属'
     }
   }
 

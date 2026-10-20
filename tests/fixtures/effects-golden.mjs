@@ -117,9 +117,9 @@ export const CASES = [
   },
   {
     buffId: 'power_rec_rhine[000]',
-    note: '发电站「除自身以外的莱茵生命干员」：只有额外那条排除自身',
+    note: '发电站「除自身以外的莱茵生命干员」：只有额外那条排除自身；且「基建内（不包含副手…）」要带 excludeAssist',
     expectLength: 2,
-    expect: [{ excludeSelf: undefined }, { value: 3, excludeSelf: true }],
+    expect: [{ excludeSelf: undefined }, { value: 3, excludeSelf: true, excludeAssist: true, factionId: 'rh' }],
   },
   {
     buffId: 'dorm_rec_single_P[000]',
@@ -511,10 +511,10 @@ export const CASES = [
   },
   {
     buffId: 'control_mp_cost&bd_up[000]',
-    note: '重岳：「每个岁干员」按阵营成员计数，且排除宿舍/活动室',
+    note: '重岳：「每个岁干员」按阵营成员计数，排除的只有宿舍（活动室＝PRIVATE 不可进驻，训练室不算）',
     expect: [{
       _any: true, type: 'specialResource', resourceId: 'bd_b1', cap: 5,
-      per: 'factionMember', factionId: 'sui', countScope: { excludeRooms: ['DORMITORY', 'TRAINING'] },
+      per: 'factionMember', factionId: 'sui', countScope: { excludeRooms: ['DORMITORY'] },
     }],
   },
   {
@@ -599,5 +599,43 @@ export const CASES = [
       { type: 'workshopByproduct', value: 5, resourceId: 'bd_ash', per: 'resourcePoint' },
       { type: 'workshopByproduct', value: 15, condition: { type: 'resourceAtLeast', threshold: 4 } },
     ],
+  },
+  // ── 第五轮：阵营/标签名不再塞进 char（含「其他」= 排除自身） ──────────────
+  {
+    buffId: 'meet_spd&sami[000]',
+    note: '提丰：「与其他萨米干员进驻会客室一起工作」是阵营条件 + 排除自身',
+    expect: [{
+      _any: true, value: 5,
+      condition: { type: 'withFactionInRoom', factionId: 'sm', room: 'MEETING', char: null, excludeSelf: true },
+    }],
+  },
+  {
+    buffId: 'meet_spd&sami[100]',
+    note: '寻澜：黑钢国际是阵营（标记文本自带「干员」后缀，字段只留派系名）',
+    expect: [{
+      _any: true, value: 15,
+      condition: { type: 'withFactionInRoom', factionId: 'bs', factionName: '黑钢国际', char: null, excludeSelf: true },
+    }],
+  },
+  {
+    buffId: 'power_rec_spd_ext&faction[000]',
+    note: 'CONFESS-47：「如果其他拉特兰干员进驻在发电站」是阵营条件',
+    expect: [{
+      _any: true, condition: { type: 'withFactionInRoom', factionId: 'laterano', room: 'POWER', char: null, excludeSelf: true },
+    }],
+  },
+  {
+    buffId: 'power_rec_spd_ext&tag[000]',
+    note: 'GALLUS²：「其他作业平台」是装置标签，用 withTagInRoom',
+    expect: [{
+      _any: true, condition: { type: 'withTagInRoom', tagId: 'op', room: 'POWER', char: null, excludeSelf: true },
+    }],
+  },
+  {
+    buffId: 'hire_spd_tag[000]',
+    note: '凯尔希·思衡托：按设施数叠加时，精英干员的约束口径与真言一致，落在效果级 factionId',
+    expect: [{
+      _any: true, value: 4, per: 'facilityCount', cap: 5, factionId: 'elite', condition: null,
+    }],
   },
 ]
