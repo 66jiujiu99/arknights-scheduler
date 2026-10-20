@@ -514,10 +514,10 @@ export const CASES = [
   },
   {
     buffId: 'control_mp_cost&bd_up[000]',
-    note: '重岳：「每个岁干员」按阵营成员计数，排除的只有宿舍（活动室＝PRIVATE 不可进驻，训练室不算）',
+    note: '重岳：「每个岁干员」按阵营成员计数，排除宿舍与活动室（PRIVATE），训练室不排除',
     expect: [{
       _any: true, type: 'specialResource', resourceId: 'bd_b1', cap: 5,
-      per: 'factionMember', factionId: 'sui', countScope: { excludeRooms: ['DORMITORY'] },
+      per: 'factionMember', factionId: 'sui', countScope: { excludeRooms: ['DORMITORY', 'PRIVATE'] },
     }],
   },
   {
@@ -666,12 +666,12 @@ export const CASES = [
   },
   {
     buffId: 'trade_ord_par&per[001]',
-    note: '赫德雷：「当伊内丝、W入驻工作场所时…分别额外+5%」是两人各 +5%，不能合并成一条',
+    note: '赫德雷：「当伊内丝、W入驻工作场所时…分别额外+5%」是两人各 +5%，不能合并成一条；「工作场所」是泛指，不能收窄成贸易站',
     expectLength: 3,
     expect: [
       { value: 30, condition: null },
-      { value: 5, condition: { type: 'charInRoom', char: '伊内丝', room: 'TRADING', excludeAssist: true } },
-      { value: 5, condition: { type: 'charInRoom', char: 'W', room: 'TRADING', excludeAssist: true } },
+      { value: 5, condition: { type: 'charInRoom', char: '伊内丝', workplace: true, excludeAssist: true } },
+      { value: 5, condition: { type: 'charInRoom', char: 'W', workplace: true, excludeAssist: true } },
     ],
   },
   {

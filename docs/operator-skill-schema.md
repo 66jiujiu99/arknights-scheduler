@@ -111,6 +111,8 @@
 | 如果目标是**莱欧斯小队干员** | `{ type: "targetIs", tagIds: ["dungeon"], tagNames: ["莱欧斯小队"] }` |
 | 当前贸易站内**存在格拉斯哥帮干员**时 | `{ type: "factionInRoom", room: "TRADING", factionId: "glasgow", factionName: "格拉斯哥帮" }` |
 | **野鬃所在的**制造站 | `{ type: "charInRoom", char: "野鬃", room: "MANUFACTURE" }` |
+| 伊内丝入驻**工作场所**时 | `{ type: "charInRoom", char: "伊内丝", workplace: true }`（`workplace` 表示任意工作设施，不能收窄成效果自身房间） |
+| 有 2 台以上**作业平台**进驻在**发电站** | `{ type: "tokenCountAtLeast", threshold: 2, tagId: "op", countScope: { room: "POWER" } }` |
 | `stacking` | stack（叠加）/ max（同种取最高）/ maxPerTarget / unique / special |
 | `addition` | 暖机类：{ initial, step, final } |
 | `source` / `text` | 来源 buffId 与中文片段，便于人工核对 |

@@ -640,7 +640,9 @@ const COUNT_SCOPE_RULES = [
   [/基建内[^，；]{0,10}每间设施每级|每间设施每级/, { baseFacilities: true, excludeRooms: ['PRIVATE'] }],
   // 「宿舍和活动室以外」：活动室（PRIVATE）在本仓库未建模、也不可进驻，
   // 能排除的只有宿舍。写成 TRAINING 会把训练室协助位也算成"以外"，是真的漏算。
-  [/宿舍和活动室以外|宿舍与活动室以外/, { excludeRooms: ['DORMITORY'] }],
+  // 「宿舍和活动室以外」：宿舍（DORMITORY）与活动室（PRIVATE）都不是"可进驻的工作设施"，
+  // 两者都要排除；只写 DORMITORY 会让活动室使用者被算进来。
+  [/宿舍和活动室以外|宿舍与活动室以外/, { excludeRooms: ['DORMITORY', 'PRIVATE'] }],
   [/宿舍以外/, { excludeRooms: ['DORMITORY'] }],
   [/宿舍内/, { room: 'DORMITORY' }],
   [/进驻(?:在)?发电站|发电站/, { room: 'POWER' }],
@@ -1986,9 +1988,18 @@ export function parseBuff(buff) {
     const c = e.condition
     if (!c || c.excludeAssist) continue
     if (/不包含副手/.test(String(c.text || ''))) c.excludeAssist = true
-    // 「当伊内丝、W入驻工作场所时」：房间写不出具体设施，但"同一个工作场所"
-    // 就是效果自身所在房间，room 为 null 会让下游无法判断。
-    if ((c.type === 'charInRoom' || c.type === 'withCharInRoom') && !c.room && e.room) c.room = e.room
+    // 「当伊内丝、W 入驻工作场所时」：工作场所是泛指（制造站/贸易站/发电站…），
+    // 收窄成效果自身房间会把触发范围砍掉，用 workplace 明确"任意工作设施"。
+    if (c.type === 'charInRoom' || c.type === 'withCharInRoom') {
+      if (/工作场所/.test(String(c.text || ''))) c.workplace = true
+      else if (!c.room && e.room) c.room = e.room
+    }
+    // 「如果有2台以上作业平台进驻在发电站」：数的是作业平台（tag），且计数域在发电站
+    if (c.type === 'tokenCountAtLeast') {
+      const tagTok = (CURRENT_TOKENS || []).find((x) => x.kind === 'tag' && String(c.text || '').includes(x.text))
+      if (tagTok) { c.tagId = tagTok.id; c.tagName = tagTok.text }
+      if (!c.countScope && /发电站/.test(String(c.text || ''))) c.countScope = { room: 'POWER' }
+    }
   }
 
   // 「当伊内丝、W入驻工作场所时，订单获取效率分别额外+5%」：两人各 +5%，
@@ -2142,6 +2153,8 @@ export function parseBuff(buff) {
     // 再留 per/perValue 会被误读成"按干员人数叠加"。
     if (e.type === 'clueBias') { delete e.per; delete e.perValue }
     if (e.excludeSelf === false) delete e.excludeSelf
+    // 条件里的 null（例如「工作场所」查不到具体房间）也要清掉，避免下游把 null 当成"指定了房间"
+    if (e.condition) for (const k of Object.keys(e.condition)) if (e.condition[k] === null || e.condition[k] === undefined) delete e.condition[k]
     for (const k of Object.keys(e)) if (e[k] === null || e[k] === undefined) delete e[k]
   }
 
