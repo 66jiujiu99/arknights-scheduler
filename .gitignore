@@ -10,3 +10,4 @@ docs/review/tools/*-1.mjs
 docs/review/tools/*-1.js
 docs/review/tools/diff-out.txt
 docs/review/tools/_dbgmod.mjs
+docs/review/tools/regress-*
