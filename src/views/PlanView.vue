@@ -77,10 +77,7 @@
                 <span>制造 +{{ num(queue.stats.CONTROL.manufacture) }}% · 贸易 +{{ num(queue.stats.CONTROL.trading) }}%</span>
               </div>
               <div class="ak-op-list">
-                <span v-for="op in queue.assigned.CONTROL" :key="op.charId" class="ak-op">
-                  <i :class="'r' + op.rarity">{{ op.rarity }}★</i>{{ op.name }}
-                  <small>{{ op.skills?.[0]?.name || '' }}</small>
-                </span>
+                <OperatorChip v-for="op in queue.assigned.CONTROL" :key="op.charId" :op="op" />
               </div>
             </div>
 
@@ -92,7 +89,7 @@
                 <span>{{ moodText(room.moodPerOp, room.moodTotal) }}</span>
               </div>
               <div class="ak-op-list">
-                <span v-for="op in room.ops" :key="op.charId" class="ak-op"><i :class="'r' + op.rarity">{{ op.rarity }}★</i>{{ op.name }}<small>{{ op.skill?.name || '' }}</small></span>
+                <OperatorChip v-for="op in room.ops" :key="op.charId" :op="op" />
               </div>
             </div>
 
@@ -104,7 +101,7 @@
                 <span>{{ moodText(room.moodPerOp, room.moodTotal) }}</span>
               </div>
               <div class="ak-op-list">
-                <span v-for="op in room.ops" :key="op.charId" class="ak-op"><i :class="'r' + op.rarity">{{ op.rarity }}★</i>{{ op.name }}<small>{{ op.skill?.name || '' }}</small></span>
+                <OperatorChip v-for="op in room.ops" :key="op.charId" :op="op" />
               </div>
             </div>
 
@@ -115,7 +112,7 @@
                 <span>{{ moodText(room.moodPerOp, room.moodTotal) }}</span>
               </div>
               <div class="ak-op-list">
-                <span v-for="op in room.ops" :key="op.charId" class="ak-op"><i :class="'r' + op.rarity">{{ op.rarity }}★</i>{{ op.name }}<small>{{ op.skill?.name || '' }}</small></span>
+                <OperatorChip v-for="op in room.ops" :key="op.charId" :op="op" />
               </div>
             </div>
 
@@ -129,7 +126,7 @@
               </div>
               <div class="ak-op-list">
                 <span v-if="!queue.assigned[row.key]?.length" class="ak-op ak-op-empty">—</span>
-                <span v-for="op in queue.assigned[row.key]" :key="op.charId" class="ak-op"><i :class="'r' + op.rarity">{{ op.rarity }}★</i>{{ op.name }}<small>{{ op.skill?.name || '' }}</small></span>
+                <OperatorChip v-for="op in queue.assigned[row.key]" :key="op.charId" :op="op" />
               </div>
             </div>
           </div>
@@ -215,6 +212,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { store } from '../stores/session'
+import OperatorChip from '../components/OperatorChip.vue'
 
 const queueIndex = ref(0)
 const targetLabel = computed(() => ({ balanced: '均衡', lmd: '主攻龙门币', orundum: '主攻合成玉' }[store.options.target] || '均衡'))
