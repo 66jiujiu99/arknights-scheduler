@@ -113,6 +113,13 @@
 | **野鬃所在的**制造站 | `{ type: "charInRoom", char: "野鬃", room: "MANUFACTURE" }` |
 | 伊内丝入驻**工作场所**时 | `{ type: "charInRoom", char: "伊内丝", workplace: true }`（`workplace` 表示任意工作设施，不能收窄成效果自身房间） |
 | 有 2 台以上**作业平台**进驻在**发电站** | `{ type: "tokenCountAtLeast", threshold: 2, tagId: "op", countScope: { room: "POWER" } }` |
+
+条件的 `op` 字段统一表达比较方向：`eq`（为 N）/ `gte`（N 以上）/ `lte`（N 以下**含 N**）/ `gt`（大于 N）。
+`capacityBelow` 与 `capacityAbove` 必带 `op`，避免「正好 16 格两档都不生效」。
+
+订单类条件：`nextOrderAbove` / `nextOrderBelow` / `nextOrderIsDefault`（下笔是违约订单）；
+`fixedOrder` 的 `subtype: "treatAsDefault"` 表示「交付数不足则**视为**违约订单」，与「固定获取某类订单」区分。
+效果上的 `priority: true` 表示原文「优先生效」（与同种效果取最高之外还优先于其它来源）。
 | `stacking` | stack（叠加）/ max（同种取最高）/ maxPerTarget / unique / special |
 | `addition` | 暖机类：{ initial, step, final } |
 | `source` / `text` | 来源 buffId 与中文片段，便于人工核对 |

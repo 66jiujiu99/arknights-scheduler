@@ -271,18 +271,18 @@ export const CASES = [
   // ── 会客室线索派系（clueNo / clueTarget / guarantee） ──────────────────
   {
     buffId: 'meet_flag[010]',
-    note: '山·哥伦比亚史：线索不是莱茵生命时增加莱茵生命线索概率 → clueNo=1',
+    note: '山·哥伦比亚史：线索不是莱茵生命时增加莱茵生命线索概率 → clueNo=1；线索派系不写 factionId（决策 13）',
     expectLength: 1,
     expect: [{
-      type: 'clueBias', clueNo: 1, factionId: 'rh', factionName: '莱茵生命',
+      type: 'clueBias', clueNo: 1, factionId: null, factionName: '莱茵生命',
       condition: { type: 'clueNotFaction', clueNo: 1 },
     }],
   },
   {
     buffId: 'meet_flag[060]',
-    note: '极境·插旗：罗德岛制药是第 7 号线索（原文只有普通关键词，没有阵营标记）',
+    note: '极境·插旗：罗德岛制药是第 7 号线索（原文只有普通关键词，没有阵营标记，也不写 factionId）',
     expectLength: 1,
-    expect: [{ type: 'clueBias', clueNo: 7, factionId: 'rhodes', factionName: '罗德岛制药' }],
+    expect: [{ type: 'clueBias', clueNo: 7, factionId: null, factionName: '罗德岛制药' }],
   },
   {
     buffId: 'meet_spd_notOwned[000]',
@@ -661,8 +661,11 @@ export const CASES = [
   },
   {
     buffId: 'trade_ord_law[000]',
-    note: '但书：「下笔赤金订单交付数小于4则视为违约订单」只对赤金订单生效',
-    expect: [{ _any: true, type: 'fixedOrder', product: '贵金属' }],
+    note: '但书：「下笔赤金订单交付数小于4则视为违约订单」只对赤金订单生效；「视为」用 subtype=treatAsDefault 与 fixedOrder 区分',
+    expect: [{
+      _any: true, type: 'fixedOrder', product: '贵金属', subtype: 'treatAsDefault',
+      condition: { type: 'nextOrderBelow', threshold: 4 },
+    }],
   },
   {
     buffId: 'trade_ord_par&per[001]',
@@ -760,9 +763,9 @@ export const CASES = [
   },
   {
     buffId: 'trade_ord_limit_diff[000]',
-    note: '孑：「订单数与上限每差1笔」是条件不是订单上限+1，不能凭空多一条',
+    note: '孑：「订单数与上限每差1笔」是条件不是订单上限+1；差额口径由 per=orderGap 表达，不再留同义 condition',
     expectLength: 1,
-    expect: [{ _any: true, value: 4, per: 'orderGap', perValue: 1, condition: { type: 'orderGap', threshold: 1 } }],
+    expect: [{ _any: true, value: 4, per: 'orderGap', perValue: 1, condition: null }],
   },
   {
     buffId: 'manu_prod_spd_variable3[000]',

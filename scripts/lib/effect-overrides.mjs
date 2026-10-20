@@ -43,8 +43,8 @@ export const EFFECT_OVERRIDES = {
   'manu_prod_spd_variable3[000]': {
     note: '两档生产力加成，16格以下 1%/格，大于16格 3%/格；原文「无法与回收利用叠加，且优先生效」→ 取最高',
     effects: [
-      { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', target: 'room', value: 1, per: 'capacity', condition: { type: 'capacityBelow', threshold: 16 }, stacking: 'max' },
-      { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', target: 'room', value: 3, per: 'capacity', condition: { type: 'capacityAbove', threshold: 16 }, stacking: 'max' },
+      { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', target: 'room', value: 1, per: 'capacity', condition: { type: 'capacityBelow', threshold: 16, op: 'lte' }, stacking: 'max', priority: true },
+      { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', target: 'room', value: 3, per: 'capacity', condition: { type: 'capacityAbove', threshold: 16, op: 'gt' }, stacking: 'max', priority: true },
     ],
   },
 

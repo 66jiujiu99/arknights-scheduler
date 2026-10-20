@@ -473,11 +473,12 @@ const CONDITION_RULES = [
   [/心情未满/, () => ({ type: 'targetMoodNotFull' })],
   [/其他发电站内没有进驻/, () => ({ type: 'noTokenInOtherPower' })],
   [/每差\s*(\d+)\s*笔|差\s*(\d+)\s*笔/, (m) => ({ type: 'orderGap', threshold: Number(m[1] || m[2]) })],
-  [/提升\s*(\d+)\s*格以下/, (m) => ({ type: 'capacityBelow', threshold: Number(m[1]) })],
-  [/提升大于\s*(\d+)\s*格/, (m) => ({ type: 'capacityAbove', threshold: Number(m[1]) })],
+  // 「16 格以下」在中文里含 16（≤），「大于 16 格」是 >；边界不写清会出现"正好 16 格两档都不生效"。
+  [/提升\s*(\d+)\s*格以下/, (m) => ({ type: 'capacityBelow', threshold: Number(m[1]), op: 'lte' })],
+  [/提升大于\s*(\d+)\s*格/, (m) => ({ type: 'capacityAbove', threshold: Number(m[1]), op: 'gt' })],
   [/下笔赤金订单交付数大于\s*(\d+)/, (m) => ({ type: 'nextOrderAbove', threshold: Number(m[1]) })],
   [/下笔赤金订单交付数小于\s*(\d+)/, (m) => ({ type: 'nextOrderBelow', threshold: Number(m[1]) })],
-  [/下笔赤金订单是违约订单/, () => ({ type: 'nextOrderDefault' })],
+  [/下笔赤金订单是违约订单/, () => ({ type: 'nextOrderIsDefault' })],
   // 「当与萨尔贡干员进驻控制中枢一起工作时」：主体是阵营而不是具名干员，
   // 抢在下面的 withCharInRoom 规则之前判定，否则阵营名会被塞进 char 字段。
   [/当与(.+?)干员进驻(.+?)一起工作/, (m) => ({ type: 'withFactionInRoom', faction: m[1].trim(), room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
@@ -892,6 +893,8 @@ function parseSegment(buff, seg, allTokens, ctx) {
 
   // —— 订单上限：按带符号的增量存储（可正可负）
   if (metric.type === 'orderLimit') effect.value = value
+  // 「则视为违约订单」是判定而非"固定获取"，用 subtype 区分，否则与 fixedOrder 同形
+  if (effect.type === 'fixedOrder' && /视为违约订单/.test(stripMarkers(text))) effect.subtype = 'treatAsDefault'
 
   // —— 叠加维度
   const per = detectPer(text, segTokens)
@@ -1312,9 +1315,9 @@ function parseBonusClause(buff, seg, allTokens, prevEffects) {
   if (!prev) return null
   const segTokens = tokensIn(allTokens, seg)
   const nums = segTokens.filter((x) => x.kind === 'num')
-  if (!nums.length) return null
 
-  // 违约订单判定：没有数值语义，单独成条
+  // 违约订单判定：没有数值语义，单独成条。必须在「本段没有数字就放弃」之前判，
+  // 「则视为违约订单」本身不含数字，阈值在上一段从句里。
   if (/视为违约订单/.test(text)) {
     return {
       type: 'fixedOrder', room: prev.room || buff.roomType, target: 'room',
@@ -1323,6 +1326,9 @@ function parseBonusClause(buff, seg, allTokens, prevEffects) {
       source: buff.buffId, text: stripMarkers(text).trim(),
     }
   }
+  if (!nums.length) return null
+
+
   // 下次训练时间
   const rt = text.match(/下次训练所需时间[^0-9+-]{0,4}([+-]?\d+)\s*%/)
   if (rt) {
@@ -1426,7 +1432,7 @@ function fallbackEffects(buff, t) {
     const clue = clueFactionOf(flag[2].trim())
     return [{ type: 'clueBias', room: 'MEETING', target: 'meeting', value: 1, unit: 'flag',
       clueNo: clue ? clue.no : null,
-      factionId: clue ? clue.id : (faction ? faction.id : null),
+      // 决策 13：线索派系只记编号与中文名，不写 factionId（命名空间不同）
       factionName: flag[2].trim(),
       condition: { type: 'clueNotFaction', clueNo: clue ? clue.no : null, text: stripMarkers(plain).trim() },
       stacking: 'stack', source: buff.buffId, text: stripMarkers(plain).trim() }]
@@ -1762,7 +1768,11 @@ export function parseBuff(buff) {
         continue
       }
       } else if (!isPreamble(seg.text)) {
-        unparsed.push(stripMarkers(seg.text).trim())
+        // 「每当新搜集到的线索不是 X 时，则额外增加 X 线索的出现概率」这两段已由
+        // clueBias（连同 clueNotFaction 条件）完整承载，不该再算「未识别的表述」。
+        const coveredByClueBias = effects.some((e) => e.type === 'clueBias')
+          && /不是.{1,20}时|线索的出现概率/.test(stripMarkers(seg.text))
+        if (!coveredByClueBias) unparsed.push(stripMarkers(seg.text).trim())
       }
     }
   }
@@ -2158,6 +2168,9 @@ export function parseBuff(buff) {
     // 再留 per/perValue 会被误读成"按干员人数叠加"。
     if (e.type === 'clueBias') { delete e.per; delete e.perValue }
     if (e.excludeSelf === false) delete e.excludeSelf
+    // 「每差 N 笔」的计数已由 per:"orderGap"/perValue 表达；同义 condition 留着会被下游当成
+    // 触发门，把「每差 1 笔 +4%」读成「差 ≥1 才 +4%」。
+    if (e.per === 'orderGap' && e.condition && e.condition.type === 'orderGap') delete e.condition
     // 条件里的 null（例如「工作场所」查不到具体房间）也要清掉，避免下游把 null 当成"指定了房间"
     if (e.condition) for (const k of Object.keys(e.condition)) if (e.condition[k] === null || e.condition[k] === undefined) delete e.condition[k]
     for (const k of Object.keys(e)) if (e[k] === null || e[k] === undefined) delete e[k]
@@ -2206,8 +2219,18 @@ export function parseBuff(buff) {
     }
   }
 
-  const manualReview = unparsed.length
-    ? { reason: '未识别的表述', segments: unparsed }
+  // clueBias 已把「线索不是 X 时，则额外增加 X 线索的出现概率」整句结构化，
+  // 这两段不再算「未识别的表述」，否则 manualReview 永远清不掉。
+  const unparsedLeft = unparsed.filter((s) => {
+    // 分句已被某条效果的 text 完整覆盖（整句解析器把整段吃掉时常见）→ 不算未识别
+    if (effects.some((e) => String(e.text || '').includes(s))) return false
+    // 纯范围从句（「同一贸易站中」）由 room/countScope 的默认语义承载
+    if (/^(?:同一|该|当前)?(?:贸易站|制造站|会客室|加工站|训练室|发电站|控制中枢)(?:内|中)?[，。]?$/.test(s)) return false
+    if (effects.some((e) => e.type === 'clueBias') && /不是.{1,20}时|线索的出现概率/.test(s)) return false
+    return true
+  })
+  const manualReview = unparsedLeft.length
+    ? { reason: '未识别的表述', segments: unparsedLeft }
     : null
   return { effects, manualReview, text: stripMarkers(t.plain).trim() }
 }
