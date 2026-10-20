@@ -87,6 +87,9 @@ const METRICS = [
 const WORKSHOP_METRICS = [
   { re: /副产品的产出概率|副产品产出概率/, type: 'workshopByproduct', room: 'WORKSHOP', unit: 'percent' },
   { re: /心情消耗(?:为\s*\d+\s*(?:以上)?的?[^，；]{0,10}(?:全部|恒定)|恒定为)/, type: 'workshopMoodCost', room: 'WORKSHOP', unit: 'mood' },
+  // 「全部心情消耗-1」这类没有“恒定为”字样，但仍是按次加工的心情点数。
+  // 必须排除「心情消耗为N的配方」——那是筛选阈值，不是消耗效果。
+  { re: /心情消耗(?!\s*为)/, type: 'workshopMoodCost', room: 'WORKSHOP', unit: 'mood' },
 ]
 
 // 特殊资源（$cc.bd_*）——不进入常规产能计算，但结构化出来供后续接入。
@@ -434,7 +437,7 @@ const CONDITION_RULES = [
 ]
 
 // “每小时”“时”这类是时间单位或从句助词，不是条件触发词。
-const CONDITION_TRIGGERS = /如果|若|当与|当自身|当.{1,12}时|只有|反之|达到.{0,4}小时|处于.{0,8}以下|.{0,6}以上时|小于|大于|满心情|心情未满|线索交流时|没有进驻|下笔|每产生|次加工没有|分支为|专精技能至|进驻在|入驻|一起工作|大于等于|必定|连续消耗/
+const CONDITION_TRIGGERS = /如果|若|当与|当自身|当.{1,12}时|只有|反之|达到.{0,4}小时|处于.{0,8}以下|.{0,6}以上时|小于|大于|满心情|心情未满|心情消耗为|线索交流时|没有进驻|下笔|每产生|次加工没有|分支为|专精技能至|进驻在|入驻|一起工作|大于等于|必定|连续消耗/
 
 // 从句里出现的数字（阈值/分母），保存下来避免解析时丢失。
 const CLAUSE_NUM_PATTERNS = [
@@ -496,6 +499,10 @@ function detectCap(text) {
 }
 
 function detectProduct(text, targets, roomType) {
+  const kw = text.match(/(贵金属|作战记录|源石|技巧概要|精英材料|基建材料|芯片|装置|异铁组|异铁|聚酸酯|炽合金块|酮凝集|晶体|源岩|手性屈光体|重相位对映体|任意类材料)/)
+  // 加工站：原文描述限定的材料子类（异铁/装置/源岩…）才是权威。
+  // 官方 targets 只是 F_EVOLVE→精英材料 这种大类，先取会被放大适用范围。
+  if (kw && roomType === 'WORKSHOP') return kw[1]
   if (Array.isArray(targets) && targets.length) {
     const list = targets.map((t) => PRODUCT_BY_FORMULA[t]).filter(Boolean)
     if (list.length === 1) return list[0]
@@ -503,7 +510,6 @@ function detectProduct(text, targets, roomType) {
     if (roomType === 'WORKSHOP' && list.length >= 4) return '任意类材料'
     if (list.length > 1) return list.join('/')
   }
-  const kw = text.match(/(贵金属|作战记录|源石|技巧概要|精英材料|基建材料|芯片|装置|异铁组|异铁|聚酸酯|炽合金块|酮凝集|晶体|源岩|手性屈光体|重相位对映体|任意类材料)/)
   return kw ? kw[1] : null
 }
 
@@ -651,7 +657,16 @@ function parseSegment(buff, seg, allTokens, ctx) {
   // —— 心情类：以数字本身的符号为准。
   //     心情每小时消耗 -0.25 → moodCostReduction（收益）
   //     心情每小时恢复 -0.1  → 实际是净消耗，转成 moodCost
-  if (metric.type === 'moodCost') {
+  if (metric.type === 'workshopMoodCost') {
+    // 「恒定为N」是设定值，「-N」是减免、「+N」是增加，三者必须可区分
+    const signed = text.match(/全部\s*([+-]\s*\d+(?:\.\d+)?)/)
+      || text.match(/心情消耗\s*([+-]\s*\d+(?:\.\d+)?)/)
+      || text.match(/([+-])\s*\d+(?:\.\d+)?\s*心情消耗/)
+    effect.subtype = /恒定|固定|变为/.test(text)
+      ? 'setTo'
+      : (signed && /-/.test(signed[1]) ? 'reduce' : 'increase')
+    effect.value = Math.abs(value)
+  } else if (metric.type === 'moodCost') {
     if (value < 0) { effect.type = 'moodCostReduction'; effect.value = Math.abs(value) }
     else effect.value = Math.abs(value)
   } else if (metric.type === 'moodRecovery') {
@@ -675,7 +690,11 @@ function parseSegment(buff, seg, allTokens, ctx) {
   }
 
   // —— 产物
-  const product = detectProduct(text, buff.targets, roomType)
+  // 加工站的材料子类常写在前置从句里（“进驻加工站加工「异铁」类材料时，副产品…”），
+  // 前置从句会被跳过，所以要从整条描述回捞，否则会退回官方 targets 的「精英材料」大类。
+  const descPlain = stripMarkers(buff.description || '')
+  const product = (roomType === 'WORKSHOP' ? detectProduct(descPlain, null, 'WORKSHOP') : null)
+    || detectProduct(text, buff.targets, roomType)
   if (product) effect.product = product
 
   // —— 职业：只对训练室效果有意义；制造/贸易里的“龙门近卫局”等不含职业语义
@@ -848,14 +867,21 @@ function parseBdExtra(buff, t, seg, allTokens) {
   if (!value) return null
   // “每5点X转化为1点Y”：产出的是 Y，不是消耗品 X
   const conv = text.match(/转化为\s*\d+\s*(?:点|层|个)?\s*([\u4e00-\u9fa5]{2,6})/)
+  // 转化句的资源 id 必须取「转化为」之后的那一个，否则会记成被消耗的资源
+  let outBd = bd
+  if (conv) {
+    const convRel = text.indexOf('转化为')
+    const after = segTokens.filter((x) => x.kind === 'bd' && (x.rel != null ? x.rel : x.at) > convRel)
+    if (after.length) outBd = after[after.length - 1]
+  }
   return {
     type: 'specialResource',
     room: buff.roomType,
     target: detectTarget(text).target,
     value,
     unit: 'points',
-    resourceId: bd.id,
-    resourceName: conv ? conv[1] : (bd.text || BD_NAMES[bd.id] || null),
+    resourceId: outBd.id,
+    resourceName: outBd.text || BD_NAMES[outBd.id] || (conv ? conv[1] : null),
     per: detectPer(text, segTokens)?.per || dormObj.per,
     perValue: detectPer(text, segTokens)?.perValue ?? dormObj.perValue,
     condition: detectCondition(text),
