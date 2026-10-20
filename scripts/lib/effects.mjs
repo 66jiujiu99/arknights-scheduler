@@ -2258,6 +2258,23 @@ export function parseBuff(buff) {
   return { effects, manualReview, text: stripMarkers(t.plain).trim() }
 }
 
+/**
+ * 依赖「其他干员在场」的条件类型：这类效果只在组合成立时生效，
+ * 不能计入静态聚合值（percent/mood/orderLimit…），否则等于无条件生效，
+ * 并且与 combos 重复计算（德克萨斯「恩怨」+65% 曾被算成 65+65=130%）。
+ * 求值由 src/core/optimizer.js 的 companion* 函数按实际编制完成。
+ */
+export const COMPANION_CONDITION_TYPES = new Set([
+  'charInRoom', 'withCharInRoom', 'factionInRoom', 'withFactionInRoom',
+  'dormFactionMoodFull', 'otherMembersInRoom', 'aloneInRoom',
+  'factionInFacility', 'charInBase',
+])
+
+/** 这条效果是否依赖他人在场（组合型）。 */
+export function isCompanionEffect(e) {
+  return !!(e && e.condition && COMPANION_CONDITION_TYPES.has(e.condition.type))
+}
+
 /** 兼容旧字段：从 effects 反推一个保守的数值，用于排序/展示 */
 export function effectScore(skill) {
   const effects = skill.effects || []
@@ -2266,6 +2283,7 @@ export function effectScore(skill) {
   let capacity = 0
   let mood = 0
   for (const e of effects) {
+    if (isCompanionEffect(e)) continue
     if (e.unit === 'percent' && ['productivity', 'orderEfficiency', 'droneCharge', 'clueSpeed', 'hireSpeed', 'trainingSpeed', 'recycleEfficiency', 'workshopByproduct'].includes(e.type)) {
       percent += Number(e.value || 0)
     }

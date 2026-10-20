@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { buildBase, DEFAULT_MANUAL } from '../src/core/base.js'
-import { generatePlans } from '../src/core/optimizer.js'
+import { generatePlans, companionEfficiency } from '../src/core/optimizer.js'
 import { skillValue } from '../src/core/data.js'
 
 const facilities = JSON.parse(readFileSync(new URL('../public/data/v5/facilities.json', import.meta.url), 'utf8'))
@@ -219,6 +219,30 @@ test('combo is placed together and increases the score', () => {
   assert.ok(c.score.lmd > top(without).score.lmd, 'combo should increase LMD')
   const tr = c.queues[0].assigned.TRADING
   assert.ok(tr.some((r) => r.ops.some((o) => o.charId === 'texas') && r.ops.some((o) => o.charId === 'lapp')))
+})
+
+test('组合条件只在同房间成立于计入，且不与 combos 重复计数', () => {
+  const condEff = (value, condition) => ({ type: 'orderEfficiency', room: 'TRADING', unit: 'percent', value, condition })
+  const texas = {
+    charId: 'texas', name: '德克萨斯',
+    skill: { room: 'TRADING', effects: [condEff(65, { type: 'withCharInRoom', char: '拉普兰德', room: 'TRADING' })] },
+  }
+  const lapp = { charId: 'lapp', name: '拉普兰德', skill: { room: 'TRADING', effects: [] } }
+  const other = { charId: 'other', name: '路人', skill: { room: 'TRADING', effects: [] } }
+  // 单独进驻：条件不成立，+65% 不能计入
+  assert.equal(companionEfficiency([texas], 'TRADING', ''), 0)
+  // 与拉普兰德同房间：只计一次 +65%（组合条目 appliedByEffects，不再额外加）
+  assert.equal(companionEfficiency([texas, lapp], 'TRADING', ''), 65)
+  // 同房间但不是指定干员：不计
+  assert.equal(companionEfficiency([texas, other], 'TRADING', ''), 0)
+
+  // 阵营条件：同房间有该阵营干员才计
+  const factionEff = { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', value: 10, condition: { type: 'factionInRoom', factionId: 'lgd' } }
+  const worker = { charId: 'w', name: '工人', skill: { room: 'MANUFACTURE', effects: [factionEff] } }
+  const chen = { charId: 'chen', name: '陈', factions: ['lgd'], skill: { room: 'MANUFACTURE', effects: [] } }
+  const x = { charId: 'x', name: '路人乙', factions: ['rh'], skill: { room: 'MANUFACTURE', effects: [] } }
+  assert.equal(companionEfficiency([worker, chen], 'MANUFACTURE', ''), 10)
+  assert.equal(companionEfficiency([worker, x], 'MANUFACTURE', ''), 0)
 })
 
 test('recommendations only include owned operators with locked skills', () => {

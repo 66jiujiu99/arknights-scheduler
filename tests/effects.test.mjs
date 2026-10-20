@@ -237,3 +237,18 @@ test('effect 的 room 都是合法设施', () => {
     }
   }
 })
+// 「当与 X 同站」「当前房间存在某阵营」这类组合条件不能计入静态值，
+// 否则等于无条件生效，且会和 combos 重复计算（德克萨斯「恩怨」曾算成 130%）。
+test('组合型条件效果不进静态 percent / mood', () => {
+  const byBuff = new Map()
+  for (const c of chars) for (const s of c.skills || []) if (!byBuff.has(s.buffId)) byBuff.set(s.buffId, { char: c.name, skill: s })
+  const texas = byBuff.get('trade_ord_spd&cost_P[000]')
+  assert.ok(texas, '缺少德克萨斯「恩怨」')
+  assert.equal(texas.skill.percent, 0, '恩怨 +65% 是条件效果，不该进静态 percent')
+  assert.equal(texas.skill.mood, 0, '恩怨 +0.3/h 心情消耗是条件效果')
+  assert.ok(texas.skill.effects.some((e) => e.condition?.type === 'withCharInRoom' && Number(e.value) === 65))
+  const morgan = byBuff.get('dorm_rec_toone[000]')
+  assert.equal(morgan.skill.mood, 0, '摩根 +0.3 需要推进之王在场')
+  const vina = byBuff.get('trade_ord_spd&par[001]')
+  assert.equal(vina.skill.percent, 30, '维娜基础 +30% 是常驻的')
+})

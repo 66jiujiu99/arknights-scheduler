@@ -21,6 +21,70 @@ const SHARD_RECIPES = {
 }
 const ORUNDUM_1_7 = { orundumPerAp: 1.09, lmdPerPull: 95400, stage: '1-7', source: '一图流 2026-10-20' }
 
+// ---------------------------------------------------------------- 组合（conditions 求值）
+// 「当与 X 在同一个贸易站时」「当前贸易站内存在某阵营干员时」这类条件依赖编制，
+// 静态值里已经排除（scripts/lib/effects.mjs 的 COMPANION_CONDITION_TYPES），
+// 必须按房间实际阵容求值，否则要么无条件生效、要么与 combos 重复计算。
+const COMPANION_CONDITION_TYPES = new Set([
+  'charInRoom', 'withCharInRoom', 'factionInRoom', 'withFactionInRoom',
+  'dormFactionMoodFull', 'otherMembersInRoom', 'aloneInRoom',
+  'factionInFacility', 'charInBase',
+])
+const COMPANION_EFFICIENCY_TYPES = new Set([
+  'productivity', 'orderEfficiency', 'clueSpeed', 'hireSpeed', 'trainingSpeed', 'droneCharge', 'recycleEfficiency',
+])
+const COMPANION_MOOD_TYPES = new Set(['moodRecovery', 'moodCost', 'moodCostReduction'])
+
+function companionEffectsOf(op, room) {
+  const skills = op.skills && op.skills.length ? op.skills : (op.skill ? [op.skill] : [])
+  return skills.flatMap((s) => (s.effects || []).filter((e) => e.condition && COMPANION_CONDITION_TYPES.has(e.condition.type)))
+}
+
+/** 条件是否被当前阵容满足。workplace 表示"任意工作设施"，本房间内有该干员即可。 */
+function companionSatisfied(effect, ownerId, ops) {
+  const c = effect.condition
+  if (!c) return false
+  const others = (ops || []).filter((o) => o.charId !== ownerId)
+  if (c.type === 'charInRoom' || c.type === 'withCharInRoom') {
+    if (!c.char) return false
+    const names = String(c.char).split(/[、,，]/).map((s) => s.trim()).filter(Boolean)
+    return others.some((o) => names.includes(o.name))
+  }
+  if (c.type === 'factionInRoom' || c.type === 'withFactionInRoom') {
+    if (!c.factionId) return false
+    return others.some((o) => (o.factions || []).includes(c.factionId))
+  }
+  if (c.type === 'otherMembersInRoom') return (ops || []).length > 1
+  if (c.type === 'aloneInRoom') return (ops || []).length === 1
+  return false
+}
+
+/** 组合条件带来的效率百分比（与原 skillSum 相加，单位：百分比）。 */
+export function companionEfficiency(ops, room, product) {
+  let sum = 0
+  for (const op of ops || []) {
+    for (const e of companionEffectsOf(op, room)) {
+      if (!COMPANION_EFFICIENCY_TYPES.has(e.type) || e.unit !== 'percent') continue
+      if (room === 'MANUFACTURE' && e.product && product && e.product !== product) continue
+      if (!companionSatisfied(e, op.charId, ops)) continue
+      sum += Number(e.value || 0)
+    }
+  }
+  return sum
+}
+
+/** 组合条件带来的心情增减（moodRecovery 正、moodCost 负、减免正）。 */
+function companionMoodDelta(op, ops, room) {
+  let delta = 0
+  for (const e of companionEffectsOf(op, room)) {
+    if (!COMPANION_MOOD_TYPES.has(e.type)) continue
+    if (!companionSatisfied(e, op.charId, ops)) continue
+    delta += e.type === 'moodCost' ? -Number(e.value || 0) : Number(e.value || 0)
+  }
+  return delta
+}
+
+
 function makeBalance(label, supply, demand) {
   const s = Math.max(0, Number(supply) || 0)
   const d = Math.max(0, Number(demand) || 0)
@@ -240,11 +304,13 @@ function comboBonus(assigned, roomType, data) {
   for (const combo of data.combos || []) {
     if (combo.facility !== roomType) continue
     const ids = (assigned[roomType] || []).map((a) => a.charId)
-    if (combo.members.every((m) => ids.includes(m))) {
-      const effect = combo.effect || {}
-      bonus += Number(effect.tradeEfficiency || effect.manufactureEfficiency || effect.controlEfficiency || 0) * 100
-      used.push(combo.id)
-    }
+    if (!combo.members.every((m) => ids.includes(m))) continue
+    // 由 effects 派生的组合已按条件求值（companionEfficiency），数值不能再叠加，
+    // 否则就是"静态算一遍、组合再算一遍"的重复计数；但仍标记命中，便于界面展示。
+    if (combo.appliedByEffects) { used.push(combo.id); continue }
+    const effect = combo.effect || {}
+    bonus += Number(effect.tradeEfficiency || effect.manufactureEfficiency || effect.controlEfficiency || 0) * 100
+    used.push(combo.id)
   }
   return { bonus, used }
 }
@@ -266,6 +332,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
     name: p.char.name,
     rarity: p.char.rarity,
     profession: p.char.profession,
+    factions: p.char.factions,
     skills: p.skills,
   }))
   increment(controlOps)
@@ -299,7 +366,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       recipe: product === '源石碎片' ? (mix.shardRecipes?.[index] || '固源岩') : null,
       ops: picks.map((p) => {
         const skill = matchingSkill(p, 'MANUFACTURE', product)
-        return { charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, skill }
+        return { charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, factions: p.char.factions, skill }
       }),
     })
     increment(picks)
@@ -328,7 +395,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       strategy,
       ops: picks.map((p) => {
         const skill = p.byRoom.TRADING || matchingSkill(p, 'TRADING', '')
-        return { charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, skill }
+        return { charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, factions: p.char.factions, skill }
       }),
     })
     increment(picks)
@@ -343,7 +410,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
     const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer)
     assigned.POWER.push({
       roomId: room.id, level: room.level,
-      ops: picks.map((p) => ({ charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, skill: p.byRoom.POWER || null })),
+      ops: picks.map((p) => ({ charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, factions: p.char.factions, skill: p.byRoom.POWER || null })),
     })
     increment(picks)
   })
@@ -366,7 +433,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       return value - mood * 6
     }
     const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer)
-    assigned[key] = picks.map((p) => ({ charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, skill: p.byRoom[roomType] || null }))
+    assigned[key] = picks.map((p) => ({ charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, factions: p.char.factions, skill: p.byRoom[roomType] || null }))
     increment(picks)
   }
 
@@ -390,7 +457,8 @@ function skillSum(ops, room, product) {
 }
 
 function rateForManufacture(product, ops, control, combo, level) {
-  const base = 1 + 0.01 * (ops || []).length + skillSum(ops, 'MANUFACTURE', product) / 100 + control.manufacture / 100 + combo / 100
+  const companion = companionEfficiency(ops, 'MANUFACTURE', product) / 100
+  const base = 1 + 0.01 * (ops || []).length + skillSum(ops, 'MANUFACTURE', product) / 100 + control.manufacture / 100 + combo / 100 + companion
   if (product === '作战记录') {
     const expPerRecord = level >= 3 ? 1000 : level >= 2 ? 400 : 200
     const hoursPerRecord = level >= 3 ? 3 : level >= 2 ? (80 / 60) : 0.75
@@ -400,7 +468,8 @@ function rateForManufacture(product, ops, control, combo, level) {
 }
 function rateForTrading(strategy, ops, control, combo, data, level) {
   const order = (data.facilities.formulas.orders || []).find((o) => o.strategy === strategy && o.level === Number(level)) || (data.facilities.formulas.orders || []).find((o) => o.strategy === strategy) || {}
-  const efficiency = 1 + 0.01 * (ops || []).length + skillSum(ops, 'TRADING', '') / 100 + control.trading / 100 + combo / 100
+  const companion = companionEfficiency(ops, 'TRADING', '') / 100
+  const efficiency = 1 + 0.01 * (ops || []).length + skillSum(ops, 'TRADING', '') / 100 + control.trading / 100 + combo / 100 + companion
   if (strategy === '开采协力') {
     const orundum = (order.orundum || 20) / (order.seconds || 7200) * 3600
     return { rate: orundum * efficiency, efficiency, demand: (order.shard || 2) / (order.seconds || 7200) * 3600 * efficiency }
@@ -499,7 +568,8 @@ function scoreQueues(queues, base, data, opts, mix) {
       const baseRate = Math.max(0.05, Number(options.baseRate != null ? options.baseRate : (1 - globalReduction)))
       const rates = list.map((op) => {
         const skill = (op.skills || []).find((x) => x.room === key) || op.skill
-        const moodMod = Number(skill?.mood || 0)
+        // 组合型心情效果（「当与 X 同站时心情消耗+0.3」）按阵容求值后再加到个人心情上
+        const moodMod = Number(skill?.mood || 0) + companionMoodDelta(op, list, key)
         return { charId: op.charId, rate: Math.min(2.5, Math.max(0, baseRate + moodMod)) }
       })
       perOp.push(...rates.map((r) => ({ ...r, key })))

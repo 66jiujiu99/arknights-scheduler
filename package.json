@@ -11,6 +11,7 @@
     "test:optimizer": "node tests/optimizer.test.mjs",
     "test:effects": "node tests/effects.test.mjs && node --test tests/effects-golden.test.mjs",
     "check:effects": "node scripts/check-effects.mjs",
+    "check:combos": "node scripts/check-combos.mjs",
     "check:efficiency": "node scripts/check-efficiency.mjs",
     "test:options": "node --test tests/options.test.mjs",
     "test:golden": "node --test tests/effects-golden.test.mjs"

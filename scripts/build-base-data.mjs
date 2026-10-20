@@ -306,8 +306,48 @@ writeFileSync(join(OUT, 'facilities.json'), JSON.stringify({
 }, null, 0))
 
 // Combos: source file keeps names for hand editing; output resolves charIds.
+// 另外从 effects 里派生「同房间伙伴」组合：只要技能里有依赖他人在场的条件
+// （当与 X 同站 / 当前房间存在某阵营），就必然存在一个组合，不能再靠手写漏掉。
 const comboSource = JSON.parse(readFileSync(join(ROOT, 'scripts', 'combos.source.json'), 'utf8'))
 const byName = new Map(Object.values(characters).map((c) => [c.name, c.id]))
+// 只把「同房间的具名干员」派生成两人组合：阵营条件没有固定成员表，
+// 「在基建内」不是同房间条件，二者都不该硬凑成两人组合。
+const COMPANION_TYPES = new Set(['charInRoom', 'withCharInRoom'])
+const derived = new Map() // key: facility|members(sorted) -> combo
+for (const [charId, entry] of Object.entries(characters)) {
+  for (const skill of entry.skills || []) {
+    for (const effect of skill.effects || []) {
+      const cond = effect.condition
+      if (!cond || !COMPANION_TYPES.has(cond.type)) continue
+      const partnerName = cond.char
+      const partnerId = partnerName ? byName.get(partnerName) : null
+      if (!partnerId || partnerId === charId) continue
+      const facility = effect.room || skill.room
+      const members = [charId, partnerId].sort()
+      const key = facility + '|' + members.join('+')
+      const cur = derived.get(key) || {
+        id: `auto_${facility.toLowerCase()}_${members.map((m) => m.replace(/^char_\d+_/, '')).join('_')}`,
+        name: `${entry.name} + ${partnerName}`,
+        facility,
+        members,
+        effects: [],
+        appliedByEffects: true,
+        verified: true,
+        note: '由 effects 自动派生：条件满足时由 optimizer 直接求值（不重复计分）',
+      }
+      cur.effects.push({
+        type: effect.type,
+        value: effect.value,
+        unit: effect.unit,
+        owner: entry.name,
+        condition: cond.type,
+        ...(cond.workplace ? { workplace: true } : {}),
+      })
+      derived.set(key, cur)
+    }
+  }
+}
+
 const combos = []
 const unresolved = []
 for (const combo of comboSource.combos || []) {
@@ -316,11 +356,33 @@ for (const combo of comboSource.combos || []) {
     unresolved.push({ id: combo.id, missing: (combo.members || []).filter((name, i) => !members[i]) })
     continue
   }
-  combos.push({ ...combo, members })
+  // 手写组合里，凡是已被派生组合完全覆盖的「两人配对」，数值由 effects 求值承担，
+  // 否则同一份加成会被算两次（德克萨斯 +65% 曾算成 130%）。
+  const facility = combo.facility
+  const covered = members.length === 2
+    && derived.has(facility + '|' + [...members].sort().join('+'))
+  combos.push({ ...combo, members, ...(covered ? { appliedByEffects: true } : {}) })
 }
+
+// 派生组合只在"手写没有覆盖同一对成员"时补充，避免同一组合出现两条
+const handwrittenPairs = new Set(
+  combos.filter((c) => c.members.length === 2).map((c) => c.facility + '|' + [...c.members].sort().join('+')),
+)
+const derivedAdded = []
+for (const [key, combo] of derived) {
+  if (handwrittenPairs.has(key)) continue
+  derivedAdded.push(combo)
+}
+
 writeFileSync(join(OUT, 'combos.json'), JSON.stringify({
-  meta: { version: '2026-10-16', source: 'hand-written combos, resolved by scripts/build-base-data.mjs', unresolved },
-  combos,
+  meta: {
+    version: '2026-10-16',
+    source: 'hand-written combos + effects-derived combos (scripts/build-base-data.mjs)',
+    handwritten: combos.length,
+    derived: derivedAdded.length,
+    unresolved,
+  },
+  combos: [...combos, ...derivedAdded],
 }, null, 0))
 
 console.log('operators', Object.keys(characters).length, 'skills', skillCount)
@@ -330,5 +392,5 @@ if (reviewList.length) {
   for (const x of reviewList) console.log('  ' + x.room + '|' + x.char + '|' + x.buffId + '|' + x.text)
 }
 console.log('rooms', Object.keys(rooms).length, 'formulas', manufactFormulas.length, workshopFormulas.length)
-console.log('combos', combos.length, 'unresolved', unresolved.length)
+console.log('combos', combos.length + derivedAdded.length, '(手写', combos.length, '+ 派生', derivedAdded.length, ') unresolved', unresolved.length)
 console.log('output', OUT)
