@@ -212,8 +212,25 @@ test('combo is placed together and increases the score', () => {
   const combo = { id: 'test_pair', name: '测试组合', facility: 'TRADING', members: ['texas', 'lapp'], effect: { tradeEfficiency: 0.65 }, verified: true }
   const specs = [...pool(30), { id: 'texas' }, { id: 'lapp' }]
   const player = mkPlayer(specs)
-  const withCombo = generate(player, mkData(characters, [combo]), { weights: { lmd: 100, exp: 0, orundum: 0, trust: 0 } })
-  const without = generate(player, mkData(characters, []), { weights: { lmd: 100, exp: 0, orundum: 0, trust: 0 } })
+  const base = {
+    ...BASE,
+    outputs: [
+      { id: 'mf0', type: 'MANUFACTURE', level: 3 },
+      { id: 'mf1', type: 'MANUFACTURE', level: 3 },
+      { id: 'mf2', type: 'MANUFACTURE', level: 3 },
+      { id: 'tr0', type: 'TRADING', level: 3 },
+      { id: 'tr1', type: 'TRADING', level: 3 },
+      { id: 'pw0', type: 'POWER', level: 3 },
+    ],
+    counts: { MANUFACTURE: 3, TRADING: 2, POWER: 1 },
+  }
+  const opts = {
+    mode: 'oneclick', operationsPerDay: 2, products: ['赤金', '赤金', '赤金'],
+    strategies: ['龙门商法', '龙门商法'], drones: false,
+    weights: { lmd: 100, exp: 0, orundum: 0, trust: 0 },
+  }
+  const withCombo = generatePlans(player, base, mkData(characters, [combo]), opts)
+  const without = generatePlans(player, base, mkData(characters, []), opts)
   const c = top(withCombo)
   assert.ok(c.score.combos.includes('test_pair'), 'combo not used: ' + c.score.combos)
   assert.ok(c.score.lmd > top(without).score.lmd, 'combo should increase LMD')
@@ -619,13 +636,48 @@ test('combo members are reserved together instead of split across rooms', () => 
     other: { id: 'other', name: '其他干员', rarity: 5, profession: '近卫', skills: [] },
   }
   const combos = [{ id: 'texas_lappland', name: '德州+拉普', facility: 'TRADING', members: ['texas', 'lappland'], effect: { tradeEfficiency: 0.65 } }]
+  const base = {
+    ...BASE,
+    outputs: [
+      { id: 'mf0', type: 'MANUFACTURE', level: 3 },
+      { id: 'mf1', type: 'MANUFACTURE', level: 3 },
+      { id: 'mf2', type: 'MANUFACTURE', level: 3 },
+      { id: 'tr0', type: 'TRADING', level: 3 },
+      { id: 'pw0', type: 'POWER', level: 3 },
+    ],
+    counts: { MANUFACTURE: 3, TRADING: 1, POWER: 1 },
+  }
   const player = mkPlayer([{ id: 'texas' }, { id: 'lappland' }, { id: 'other' }, ...pool(30)])
-  const result = generatePlans(player, BASE, mkData(characters, combos), {
-    mode: 'oneclick', operationsPerDay: 2, products: ['赤金', '赤金', '赤金'], strategies: ['龙门商法', '龙门商法', '龙门商法'],
+  const result = generatePlans(player, base, mkData(characters, combos), {
+    mode: 'oneclick', operationsPerDay: 2, products: ['赤金', '赤金', '赤金'], strategies: ['龙门商法'],
     drones: false, weights: { lmd: 100, exp: 0, orundum: 0, trust: 0 },
   })
   const queue = result.candidates[0].queues[0]
   const room = queue.assigned.TRADING.find((r) => r.ops.some((o) => o.charId === 'texas'))
   assert.ok(room, 'texas should be assigned')
   assert.ok(room.ops.some((o) => o.charId === 'lappland'), 'lappland must be in the same room')
+})
+
+
+test('trade staffing is reduced when manufacturing cannot feed the trade capacity', () => {
+  const base = {
+    ...BASE,
+    outputs: [
+      { id: 'mf0', type: 'MANUFACTURE', level: 3 },
+      { id: 'mf1', type: 'MANUFACTURE', level: 3 },
+      { id: 'tr0', type: 'TRADING', level: 3 },
+      { id: 'tr1', type: 'TRADING', level: 3 },
+      { id: 'pw0', type: 'POWER', level: 3 },
+    ],
+    counts: { MANUFACTURE: 2, TRADING: 2, POWER: 1 },
+  }
+  const player = mkPlayer(pool(30))
+  const result = generatePlans(player, base, mkData({}), {
+    mode: 'oneclick', operationsPerDay: 2, products: ['赤金', '赤金'], strategies: ['龙门商法', '龙门商法'],
+    drones: false, weights: { lmd: 100, exp: 0, orundum: 0, trust: 0 },
+  })
+  const rooms = result.candidates[0].queues[0].assigned.TRADING
+  const totalOps = rooms.reduce((n, room) => n + room.ops.length, 0)
+  assert.ok(totalOps < 6, 'overcapacity trade rooms should shed operators, got ' + totalOps)
+  assert.ok(rooms.every((room) => room.ops.length >= 1), 'trade rooms must keep at least one operator')
 })

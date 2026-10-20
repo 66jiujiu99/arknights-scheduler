@@ -348,6 +348,67 @@ function comboBonus(assigned, roomType, data) {
   return { bonus, used }
 }
 
+function tradeMoodCost(ops, controlOpsCount) {
+  const globalReduction = 0.05 * controlOpsCount
+  const baseRate = 1 - (ops.length >= 3 ? 0.1 : ops.length >= 2 ? 0.05 : 0) - globalReduction
+  let total = 0
+  for (const op of ops) {
+    const skill = op.skill || (op.skills || []).find((x) => x.room === 'TRADING')
+    const mood = Number(skill?.mood || 0) + companionMoodDelta(op, ops, 'TRADING')
+    total += Math.min(2.5, Math.max(0, baseRate + mood))
+  }
+  return total
+}
+
+function optimizeTradeStaffing(queues, base, data, opts) {
+  const droneFactor = opts?.drones ? 1.05 : 1
+  for (const queue of queues) {
+    const control = queue.control || { manufacture: 0, trading: 0 }
+    const controlOpsCount = (queue.assigned.CONTROL || []).length
+    let goldSupply = 0
+    let shardSupply = 0
+    for (const room of queue.assigned.MANUFACTURE || []) {
+      const combo = comboBonus({ MANUFACTURE: room.ops }, 'MANUFACTURE', data)
+      const result = rateForManufacture(room.product, room.ops, control, combo.bonus, room.level)
+      if (room.product === '赤金') goldSupply += result.rate
+      else if (room.product === '源石碎片') shardSupply += result.rate
+    }
+    goldSupply *= droneFactor
+    shardSupply *= droneFactor
+    const demandFor = (strategy) => {
+      let total = 0
+      for (const room of queue.assigned.TRADING || []) {
+        if (room.strategy !== strategy) continue
+        const combo = comboBonus({ TRADING: room.ops }, 'TRADING', data)
+        total += rateForTrading(room.strategy, room.ops, control, combo.bonus, data, room.level).demand
+      }
+      return total
+    }
+    for (const room of queue.assigned.TRADING || []) {
+      const supply = room.strategy === '开采协力' ? shardSupply : goldSupply
+      while (room.ops.length > 1) {
+        const beforeDemand = demandFor(room.strategy)
+        if (beforeDemand < supply * 1.02) break
+        const beforeMood = tradeMoodCost(room.ops, controlOpsCount)
+        let best = null
+        for (let i = 0; i < room.ops.length; i += 1) {
+          const candidate = room.ops.slice(0, i).concat(room.ops.slice(i + 1))
+          const original = room.ops
+          room.ops = candidate
+          const demand = demandFor(room.strategy)
+          const mood = tradeMoodCost(candidate, controlOpsCount)
+          room.ops = original
+          if (demand + 1e-9 < supply * 1.02) continue
+          if (mood >= beforeMood) continue
+          if (!best || mood < best.mood) best = { index: i, mood }
+        }
+        if (!best) break
+        room.ops.splice(best.index, 1)
+      }
+    }
+  }
+}
+
 function assignQueue(pool, base, data, mix, usedCount, opts) {
   const maxShifts = opts.maxShifts != null ? Number(opts.maxShifts) : (opts.mode === 'manual' ? 2 : 1)
   const usedInQueue = new Set()
@@ -830,6 +891,7 @@ function makeQueuePlan(pool, base, data, mix, opts) {
     const startHour = (Number(opts.startHour || 8) + i * opts.hours) % 24
     queues.push({ index: i, startHour, hours: opts.hours, assigned: q.assigned, control: q.control, controlCombo: q.controlCombo || [] })
   }
+  optimizeTradeStaffing(queues, base, data, opts)
   return queues
 }
 
