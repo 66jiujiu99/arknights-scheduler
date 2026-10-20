@@ -644,6 +644,9 @@ const COUNT_SCOPE_RULES = [
   // 两者都要排除；只写 DORMITORY 会让活动室使用者被算进来。
   [/宿舍和活动室以外|宿舍与活动室以外/, { excludeRooms: ['DORMITORY', 'PRIVATE'] }],
   [/宿舍以外/, { excludeRooms: ['DORMITORY'] }],
+  // 「每有一个泡影国狩猎小队干员进驻贸易站」：原文没说「当前/同个」，计数域是**所有**贸易站
+  // （allRooms 用于跳过"与效果房间相同就不用记"的省略规则）。
+  [/每[^，；]{0,14}干员进驻(?:在)?贸易站/, { room: 'TRADING', allRooms: true }],
   [/宿舍内/, { room: 'DORMITORY' }],
   [/进驻(?:在)?发电站|发电站/, { room: 'POWER' }],
   [/进驻(?:在)?制造站|制造站内|制造站/, { room: 'MANUFACTURE' }],
@@ -670,10 +673,12 @@ function detectCountScope(text, effect) {
       const sameRoom = effect.room === scope.room
         // 「宿舍内每有1名干员」而效果 target 已是宿舍：房间域已由 target 表达
         || (effect.target === 'dormitory' && scope.room === 'DORMITORY')
-      if (sameRoom) continue
+      // allRooms：原文明确是"所有这类房间"，即使等于效果房间也要记，否则下游按本房间算
+      if (sameRoom && !scope.allRooms) continue
     }
     Object.assign(out, scope)
   }
+  delete out.allRooms
   return Object.keys(out).length ? out : null
 }
 

@@ -804,4 +804,12 @@ export const CASES = [
     note: '梅：线索派系只记 clueNo + factionName，factionId 是另一套命名空间（口径决策 6）',
     expect: [{ _any: true, type: 'clueBias', clueNo: 2, factionId: null, factionName: '企鹅物流' }],
   },
+  {
+    buffId: 'trade_ord_spd&limit_tag[000]',
+    note: '焰狐龙梓兰：「每有一个泡影国狩猎小队干员进驻贸易站」没说同个 → 计数域是所有贸易站',
+    expect: [
+      { _any: true, type: 'orderLimit', value: 3, condition: null },
+      { _any: true, type: 'orderEfficiency', value: 20, tagId: 'mh2', per: 'tagMember', countScope: { room: 'TRADING' } },
+    ],
+  },
 ]
