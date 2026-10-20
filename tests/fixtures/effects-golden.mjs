@@ -373,4 +373,54 @@ export const CASES = [
     note: '菲亚梅塔：互换心情是布尔机制，value 应为 1',
     expect: [{ _any: true, type: 'moodExchange', value: 1 }],
   },
+
+  // ── 控制中枢技能作用于其他设施：范围在从句里，不能在效果段丢成 room ────
+  {
+    buffId: 'control_tra_limit&spd[000]',
+    note: '灵知：每个进驻在贸易站的谢拉格干员 → 作用于所有贸易站，且按派系人数叠加',
+    expectLength: 2,
+    expect: [
+      {
+        type: 'orderEfficiency', target: 'allTrading', value: -15,
+        per: 'factionMember', factionId: 'karlan', factionName: '谢拉格',
+      },
+      { type: 'orderLimit', target: 'allTrading', value: 6, per: 'factionMember', factionId: 'karlan' },
+    ],
+  },
+  {
+    buffId: 'control_tra_limit&spd3[000]',
+    note: '凛御银灰：「存在3名谢拉格干员的贸易站」是按站门槛，不是每3人叠加一次',
+    expectLength: 1,
+    expect: [{
+      type: 'orderEfficiency', target: 'allTrading', value: 10, per: null, perValue: null,
+      condition: { type: 'factionCountAtLeast', factionId: 'karlan', threshold: 3 },
+    }],
+  },
+  {
+    buffId: 'control_mp_psk[000]',
+    note: '焰尾：每个进驻在制造站的红松骑士团干员 → 所有制造站，两条配方各带派系叠加',
+    expectLength: 2,
+    expect: [
+      { type: 'productivity', target: 'allManufacture', value: 10, product: '作战记录', per: 'factionMember', factionId: 'psk' },
+      { type: 'productivity', target: 'allManufacture', value: -10, product: '贵金属', per: 'factionMember', factionId: 'psk' },
+    ],
+  },
+  {
+    buffId: 'control_mp_bd[000]',
+    note: '灰烬：控制中枢内每有1名彩虹小队干员则情报储备+1',
+    expectLength: 1,
+    expect: [{
+      type: 'specialResource', value: 1, per: 'factionMember', perValue: 1,
+      factionId: 'R6', factionName: '彩虹小队', resourceId: 'bd_ash', resourceName: '情报储备',
+    }],
+  },
+  {
+    buffId: 'control_costToBD[000]',
+    note: '令：心情>12 给人间烟火+15、心情≤12 给感知信息+10，两个条件不能互换',
+    expectLength: 2,
+    expect: [
+      { type: 'specialResource', value: 15, resourceId: 'bd_b1', condition: { type: 'selfMoodAbove', threshold: 12 } },
+      { type: 'specialResource', value: 10, resourceId: 'bd_a1', condition: { type: 'selfMoodBelow', threshold: 12 } },
+    ],
+  },
 ]

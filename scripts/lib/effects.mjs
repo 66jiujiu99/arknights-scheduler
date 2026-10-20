@@ -278,6 +278,10 @@ function tokensIn(tokens, seg) {
 }
 
 const TARGET_RULES = [
+  // 「每个存在3名谢拉格干员的贸易站，订单获取效率+10%」：作用范围是"满足条件的那些站"
+  [/每个存在\s*\d+\s*名[^，；]*贸易站/, 'allTrading', {}],
+  [/每个存在\s*\d+\s*名[^，；]*制造站/, 'allManufacture', {}],
+  [/每个存在\s*\d+\s*名[^，；]*会客室/, 'meeting', {}],
   // “每个进驻在制造站的骑士干员…” → 作用于全体验制造站，不是控制中枢自身房间
   [/每个进驻在制造站|进驻在制造站/, 'allManufacture', {}],
   [/每个进驻在贸易站|进驻在贸易站/, 'allTrading', {}],
@@ -1240,6 +1244,21 @@ function applyPending(e, pc) {
     e.profession = pc.profession
     if (pc.professions) e.professions = pc.professions
   }
+  // 「每个进驻在贸易站的谢拉格干员，订单获取效率-15%」：作用范围在从句里，
+  // 效果段只剩「订单获取效率-15%」，detectTarget 会退化成 room。
+  // 只认「进驻在X站」且目标设施与效果房间一致的情况：
+  // 「如果菲亚梅塔进驻在宿舍，会客室线索速度+10%」里的宿舍是条件，不是作用范围。
+  const TARGET_ROOM = {
+    allTrading: 'TRADING', allManufacture: 'MANUFACTURE', meeting: 'MEETING',
+    allDormitory: 'DORMITORY', trainingRoom: 'TRAINING', control: 'CONTROL',
+  }
+  if (e.target === 'room' && pc.condition && pc.condition.text && /进驻在|存在\d+名/.test(pc.condition.text)) {
+    const t = detectTarget(pc.condition.text)
+    if (t && t.target && TARGET_ROOM[t.target] && TARGET_ROOM[t.target] === e.room) {
+      e.target = t.target
+      if (t.excludeSelf && e.excludeSelf == null) e.excludeSelf = true
+    }
+  }
   return e
 }
 
@@ -1397,6 +1416,23 @@ export function parseBuff(buff) {
       // 攒起来：这一段是下一条效果的触发主体/条件
       const cond = detectCondition(seg.text)
       const per = detectPer(seg.text, tokensIn(t.tokens, seg))
+      // 「每个存在3名谢拉格干员的贸易站，订单获取效率+10%」：3 是"按站前提"而不是
+      // 叠加分母（3 人 +10%，6 人也只 +10%），不能按 perValue=3 逐人累加。
+      const exist = stripMarkers(seg.text).match(/每个存在\s*(\d+)\s*名(.+?)干员的(.+?)(?:，|$)/)
+      if (exist) {
+        const th = Number(exist[1])
+        pendingCondition = {
+          condition: {
+            type: 'factionCountAtLeast',
+            factionId: per ? per.factionId : null,
+            factionName: per ? per.factionName : null,
+            threshold: th,
+            text: stripMarkers(seg.text).trim(),
+            numbers: [th],
+          },
+        }
+        continue
+      }
       if (cond || per) {
         pendingCondition = {
           condition: cond || { type: 'trigger', text: stripMarkers(seg.text).trim() },
