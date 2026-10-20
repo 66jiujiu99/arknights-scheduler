@@ -305,7 +305,7 @@ function detectTarget(text) {
 const PER_RULES = [
   [/每个招募位|招募位（不包含初始招募位）/, { per: 'hireSlot' }],
   [/每间宿舍每级|宿舍每级|每级|每间设施每级/, { per: 'roomLevel' }],
-  [/每有\d*间发电站|每\d*间发电站|间发电站/, { per: 'powerStation' }],
+  [/每有\d*间发电站|每\d*间发电站|间发电站|每(?:个|座)发电站/, { per: 'powerStation' }],
   [/每个贸易站|每\d*个?贸易站/, { per: 'tradingStation' }],
   [/赤金生产线/, { per: 'goldLine' }],
   [/作业平台/, { per: 'token' }],
@@ -331,7 +331,7 @@ function detectPer(text, segTokens) {
     break
   }
   if (perIdx < 0) return null
-  if (!/每\s*\d|每个|每名|每有|每间|每条|每点|每格|每架|每瓶|每产生/.test(text.slice(perIdx))) {
+  if (!/每\s*\d|每个|每名|每有|每间|每条|每点|每格|每架|每瓶|每产生|每级|每座|每台|每位/.test(text.slice(perIdx))) {
     const bd = segTokens.find((t) => t.kind === 'bd')
     const faction = segTokens.find((t) => t.kind === 'faction')
     const tag = segTokens.find((t) => t.kind === 'tag')
@@ -342,7 +342,11 @@ function detectPer(text, segTokens) {
   const tag = segTokens.find((t) => t.kind === 'tag')
 
   let per = null
-  if (bd) per = 'resourcePoint'
+  // 「每间设施每级」是按设施等级计数，句中出现的产物名不是计数单位
+  if (/每间设施每级|宿舍每级|每级/.test(text)) per = 'roomLevel'
+  // 「每个招募位」是设施槽位计数，即使句中出现特殊资源也不该退化成 resourcePoint
+  else if (/招募位/.test(text)) per = 'hireSlot'
+  else if (bd) per = 'resourcePoint'
   else if (faction) per = 'factionMember'
   else if (tag) per = 'tagMember'
   else {
@@ -505,12 +509,19 @@ function detectProduct(text, targets, roomType) {
 
 const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种']
 
-function detectProfession(text, segTokens) {
+function detectProfessions(text, segTokens) {
+  const found = []
   for (const t of segTokens) {
-    if (t.kind === 'kw' && PROFESSIONS.includes(String(t.text).trim())) return String(t.text).trim()
+    if (t.kind !== 'kw') continue
+    const s = String(t.text).trim()
+    if (PROFESSIONS.includes(s) && !found.includes(s)) found.push(s)
   }
-  for (const p of PROFESSIONS) if (text.includes(p)) return p
-  return null
+  for (const p of PROFESSIONS) if (text.includes(p) && !found.includes(p)) found.push(p)
+  return found
+}
+
+function detectProfession(text, segTokens) {
+  return detectProfessions(text, segTokens)[0] || null
 }
 
 
@@ -668,9 +679,11 @@ function parseSegment(buff, seg, allTokens, ctx) {
   if (product) effect.product = product
 
   // —— 职业：只对训练室效果有意义；制造/贸易里的“龙门近卫局”等不含职业语义
-  const profession = detectProfession(text, segTokens)
-  if (profession && (metric.room === 'TRAINING' || buff.roomType === 'TRAINING')) {
-    effect.profession = profession
+  // 「近卫与狙击干员」这类双职业必须两个都保留，否则会漏掉半个受训人群。
+  const professions = detectProfessions(text, segTokens)
+  if (professions.length && (metric.room === 'TRAINING' || buff.roomType === 'TRAINING')) {
+    effect.profession = professions[0]
+    if (professions.length > 1) effect.professions = professions
   }
 
   // —— 条件
@@ -1321,6 +1334,21 @@ export function parseBuff(buff) {
   }
   effects.length = 0
   effects.push(...dedup)
+
+  // 「除自身以外」不限宿舍：贸易站/发电站等同样会出现，统一补 excludeSelf。
+  // 只标在真正描述到它的效果上，并把宿舍类的标记传染给同房同类型的「额外」段。
+  const hasExcludeSelfText = (e) => /除自身以外|除自身之外/.test(
+    String(e.text || '') + ' ' + String((e.condition && e.condition.text) || ''),
+  )
+  for (const e of effects) {
+    if (e.excludeSelf == null && e.target && e.target !== 'self' && hasExcludeSelfText(e)) e.excludeSelf = true
+  }
+  for (const e of effects) {
+    if (e.excludeSelf != null || e.target === 'self') continue
+    if (!['dormitory', 'roomMembers', 'allDormitory'].includes(e.target)) continue
+    const sibling = effects.find((x) => x !== e && x.excludeSelf != null && x.type === e.type && x.target === e.target)
+    if (sibling) e.excludeSelf = true
+  }
 
   // 后处理：清理临时字段
   for (const e of effects) {
