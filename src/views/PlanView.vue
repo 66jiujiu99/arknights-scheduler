@@ -32,9 +32,9 @@
           </div>
           <div class="ak-candidate-score">{{ Math.round(c.score.targetScore ?? 0) }}<small>目标分</small></div>
           <div class="ak-candidate-metrics">
-            <span>LMD {{ fmt(c.score.netLmd) }}</span>
+            <span>龙门币 {{ fmt(c.score.netLmd) }}</span>
             <span>玉 {{ fmt(c.score.orundum) }}</span>
-            <span>EXP {{ fmt(c.score.exp) }}</span>
+            <span>经验 {{ fmt(c.score.exp) }}</span>
           </div>
           <div class="ak-candidate-mood" :class="{ 'ak-bad': c.score.minMood < 4 }">
             最低心情 {{ c.score.minMood.toFixed(1) }}
@@ -170,7 +170,7 @@
             <div class="ak-metric"><span>龙门币消耗</span><b>{{ fmt(shardCost.lmdCost) }}/天</b></div>
             <div v-if="shardCost.apCost > 0.01" class="ak-metric"><span>1-7 理智消耗</span><b>{{ fmt(shardCost.apCost) }} / 天</b></div>
             <div v-if="shardCost.surplus > 0.01" class="ak-metric ak-bad"><span>碎片富余</span><b>{{ fmt(shardCost.surplus) }}/天</b></div>
-            <p class="ak-hint">按一图流 1-7：每理智 1.09 合成玉；固源岩配方 2 个 + 1600 龙门币/碎片，装置配方 1 个 + 1000 龙门币/碎片。配方龙门币可在配置中调整。搓玉本身是龙门币净消耗，净 LMD 为负是正常的。</p>
+            <p class="ak-hint">按一图流 1-7：每理智 1.09 合成玉；固源岩配方 2 个 + 1600 龙门币/碎片，装置配方 1 个 + 1000 龙门币/碎片。配方龙门币可在配置中调整。搓玉本身是龙门币净消耗，净龙门币为负是正常的。</p>
           </section>
 
           <section class="ak-card">
@@ -249,7 +249,7 @@ function balanceStatus(b) {
 }
 function shardRoomText(room) {
   if (!room || room.product !== '源石碎片') return ''
-  return (room.shardRecipe || '固源岩') + ' ' + Number(room.materialPerHour || 0).toFixed(2) + '/h · LMD ' + Math.round(room.lmdCostPerHour || 0) + '/h'
+  return (room.shardRecipe || '固源岩') + ' ' + Number(room.materialPerHour || 0).toFixed(2) + '/h · 龙门币 ' + Math.round(room.lmdCostPerHour || 0) + '/h'
 }
 function pct(n) { return Math.round(Number(n || 0) * 100) + '%' }
 function num(n) { return Math.round(Number(n || 0)) }
