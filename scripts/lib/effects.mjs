@@ -500,10 +500,12 @@ function detectCap(text) {
 }
 
 function detectProduct(text, targets, roomType) {
-  const kw = text.match(/(贵金属|作战记录|源石|技巧概要|精英材料|基建材料|芯片|装置|异铁组|异铁|聚酸酯|炽合金块|酮凝集|晶体|源岩|手性屈光体|重相位对映体|任意类材料)/)
+  const kw = text.match(/(手性屈光体或重相位对映体|贵金属|作战记录|源石|技巧概要|精英材料|基建材料|芯片|装置|异铁组|异铁|聚酸酯|炽合金块|酮凝集|晶体|源岩|手性屈光体|重相位对映体|任意类材料)/)
+  // 「手性屈光体或重相位对映体」是两种材料都要，不能只取第一个
+  const norm = (v) => (v === '手性屈光体或重相位对映体' ? '手性屈光体/重相位对映体' : v)
   // 加工站：原文描述限定的材料子类（异铁/装置/源岩…）才是权威。
   // 官方 targets 只是 F_EVOLVE→精英材料 这种大类，先取会被放大适用范围。
-  if (kw && roomType === 'WORKSHOP') return kw[1]
+  if (kw && roomType === 'WORKSHOP') return norm(kw[1])
   if (Array.isArray(targets) && targets.length) {
     const list = targets.map((t) => PRODUCT_BY_FORMULA[t]).filter(Boolean)
     if (list.length === 1) return list[0]
@@ -659,13 +661,16 @@ function parseSegment(buff, seg, allTokens, ctx) {
   //     心情每小时消耗 -0.25 → moodCostReduction（收益）
   //     心情每小时恢复 -0.1  → 实际是净消耗，转成 moodCost
   if (metric.type === 'workshopMoodCost') {
-    // 「恒定为N」是设定值，「-N」是减免、「+N」是增加，三者必须可区分
+    // 「恒定为N」是设定值，「-N」是减免、「+N」是增加、「全部除以N」是除法，四者必须可区分。
+    // 除法必须最先判，否则会被兜底成 increase（罗小黑「全部除以4」曾被反成 +4）。
     const signed = text.match(/全部\s*([+-]\s*\d+(?:\.\d+)?)/)
       || text.match(/心情消耗\s*([+-]\s*\d+(?:\.\d+)?)/)
       || text.match(/([+-])\s*\d+(?:\.\d+)?\s*心情消耗/)
-    effect.subtype = /恒定|固定|变为/.test(text)
-      ? 'setTo'
-      : (signed && /-/.test(signed[1]) ? 'reduce' : 'increase')
+    effect.subtype = /全部除以|除以/.test(text)
+      ? 'divide'
+      : /恒定|固定|变为/.test(text)
+        ? 'setTo'
+        : (signed && /-/.test(signed[1]) ? 'reduce' : 'increase')
     effect.value = Math.abs(value)
   } else if (metric.type === 'moodCost') {
     if (value < 0) { effect.type = 'moodCostReduction'; effect.value = Math.abs(value) }
@@ -1202,7 +1207,19 @@ export function parseBuff(buff) {
       // 「A；如果 C，则 B」：C 只限定后面的 B。
       // 回溯挂到 A 会让本无条件的基础值变成「满足 C 才生效」，严重低估收益。
       if (hasEffectAfter(segments, si, buff.roomType)) {
-        pendingCondition = { condition: condOnly, per: null, perValue: null }
+        // 条件从句里往往同时带着叠加维度（「每个进驻在贸易站的谢拉格干员」），
+        // 必须一并传递，否则阵营叠加信息会整条丢失。
+        const perInf = detectPer(seg.text, tokensIn(t.tokens, seg))
+        pendingCondition = {
+          condition: condOnly,
+          per: perInf ? perInf.per : null,
+          perValue: perInf ? perInf.perValue : null,
+          factionId: perInf ? perInf.factionId : null,
+          factionName: perInf ? perInf.factionName : null,
+          tagId: perInf ? perInf.tagId : null,
+          tagName: perInf ? perInf.tagName : null,
+          cap: detectCap(seg.text),
+        }
         continue
       }
       const prev = effects[effects.length - 1]
@@ -1233,15 +1250,22 @@ export function parseBuff(buff) {
     if (!e) e = parseContinuation(buff, seg, t.tokens, effects)
     if (e && e.skip) e = null
     if (e) {
-      if (pendingCondition && !e.condition) {
-        e.condition = pendingCondition.condition
-        if (pendingCondition.clauseNumbers && e.condition) {
-          e.condition.numbers = e.condition.numbers || pendingCondition.clauseNumbers
-        } else if (pendingCondition.clauseNumbers && !e.condition) {
-          e.condition = { type: 'trigger', text: String(e.text || ''), numbers: pendingCondition.clauseNumbers }
+      if (pendingCondition) {
+        if (!e.condition) {
+          e.condition = pendingCondition.condition
+          if (pendingCondition.clauseNumbers && e.condition) {
+            e.condition.numbers = e.condition.numbers || pendingCondition.clauseNumbers
+          } else if (pendingCondition.clauseNumbers && !e.condition) {
+            e.condition = { type: 'trigger', text: String(e.text || ''), numbers: pendingCondition.clauseNumbers }
+          }
+        } else if (pendingCondition.condition && pendingCondition.condition.text && !e.condition.extra) {
+          // 效果自带的条件（如配方阈值）与前置从句的条件（如「宿舍内每有10名…」）
+          // 是两件事，不能互相覆盖，前置从句保留在 extra 里
+          e.condition.extra = pendingCondition.condition.text
         }
-        // 继承前置从句的阵营/标签（如“每有1名X干员，会客室速度+4%”）；
-        // 本段自带时不覆盖，避免跨句误挂
+        // 叠加维度必须独立于 condition 传递：
+        // 「每个进驻在制造站的黑钢国际干员，生产力+5%」里，效果可能自带条件，
+        // 但 per/factionId 仍必须继承，否则阵营叠加信息整体丢失。
         if (pendingCondition.factionId && !e.factionId) e.factionId = pendingCondition.factionId
         if (pendingCondition.factionName && !e.factionName) e.factionName = pendingCondition.factionName
         if (pendingCondition.tagId && !e.tagId) e.tagId = pendingCondition.tagId
@@ -1362,9 +1386,10 @@ export function parseBuff(buff) {
   effects.length = 0
   effects.push(...dedup)
 
-  // 「除自身以外」不限宿舍：贸易站/发电站等同样会出现，统一补 excludeSelf。
-  // 只标在真正描述到它的效果上，并把宿舍类的标记传染给同房同类型的「额外」段。
-  const hasExcludeSelfText = (e) => /除自身以外|除自身之外/.test(
+  // 「除自身以外」只对"作用于一批干员"的效果有意义。
+  // clueBias 之类的倾向/标记效果没有"排除自身"的概念，用整句正则会把无关效果一起传染。
+  const NO_EXCLUDE_SELF_TYPES = new Set(['clueBias', 'fixedOrder', 'resetOthers', 'specialBonus', 'unknown'])
+  const hasExcludeSelfText = (e) => !NO_EXCLUDE_SELF_TYPES.has(e.type) && /除自身以外|除自身之外/.test(
     String(e.text || '') + ' ' + String((e.condition && e.condition.text) || ''),
   )
   for (const e of effects) {
@@ -1372,6 +1397,7 @@ export function parseBuff(buff) {
   }
   for (const e of effects) {
     if (e.excludeSelf != null || e.target === 'self') continue
+    if (NO_EXCLUDE_SELF_TYPES.has(e.type)) continue
     if (!['dormitory', 'roomMembers', 'allDormitory'].includes(e.target)) continue
     const sibling = effects.find((x) => x !== e && x.excludeSelf != null && x.type === e.type && x.target === e.target)
     if (sibling) e.excludeSelf = true

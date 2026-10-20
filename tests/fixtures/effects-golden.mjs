@@ -166,8 +166,23 @@ export const CASES = [
   },
   {
     buffId: 'workshop_formula_device[080]',
-    note: '加工手性屈光体/重相位对映体',
-    expect: [{ type: 'workshopByproduct', product: '手性屈光体' }],
+    note: '加工手性屈光体或重相位对映体：两种材料都要覆盖，不能只取第一个',
+    expect: [{ type: 'workshopByproduct', product: '手性屈光体/重相位对映体' }],
+  },
+  {
+    buffId: 'workshop_formula_lolxh[000]',
+    note: '「全部除以4」是除法，不能兜底成 increase(+4)',
+    expect: [{ type: 'workshopMoodCost', value: 4, unit: 'mood', subtype: 'divide' }],
+  },
+  {
+    buffId: 'workshop_formula_cost&dorm[000]',
+    note: '配方阈值4 与「宿舍每10名心情<12干员」并存，且按人数叠加',
+    expect: [{ type: 'workshopMoodCost', value: 1, per: 'operator', condition: { type: 'recipeMoodCost', threshold: 4, extra: '宿舍内每有10名心情12以下的干员时' } }],
+  },
+  {
+    buffId: 'control_clue_cost&faction[990]',
+    note: 'excludeSelf 只属于心情消耗那条，不能传染给 clueBias',
+    expect: [{ type: 'clueBias', excludeSelf: undefined }, { type: 'moodCost', excludeSelf: true }],
   },
 
   // ── S8 「加工原始心情消耗为N的材料」阈值要进 condition ──────────────────
