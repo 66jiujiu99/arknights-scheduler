@@ -1020,7 +1020,7 @@ function recommendationCost(entry, char, skill) {
   const cost = materials + lmd / 1000 + levelPenalty
   const parts = []
   if (targetPhase > currentPhase) {
-    parts.push('精' + targetPhase + ' 材料' + materials + (lmd ? ' + ' + Math.round(lmd / 1000) + 'k LMD' : ''))
+    parts.push('精' + targetPhase + ' 材料' + materials + (lmd ? ' + ' + Math.round(lmd / 1000) + 'k 龙门币' : ''))
   }
   if (levelGap > 0) parts.push('Lv' + skill.level + '（差' + levelGap + '级）')
   return {
