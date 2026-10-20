@@ -633,9 +633,47 @@ export const CASES = [
   },
   {
     buffId: 'hire_spd_tag[000]',
-    note: '凯尔希·思衡托：按设施数叠加时，精英干员的约束口径与真言一致，落在效果级 factionId',
+    note: '凯尔希·思衡托：按设施数叠加时，精英干员的约束口径与真言一致，落在效果级 factionId；override 重建后仍要带 excludeAssist',
     expect: [{
       _any: true, value: 4, per: 'facilityCount', cap: 5, factionId: 'elite', condition: null,
+      excludeAssist: true,
+    }],
+  },
+  {
+    buffId: 'trade_ord_pepe[000]',
+    note: '佩佩：固定获取 <$cc.tra.pepe> 特别独占订单，且该类订单不受订单效率影响',
+    expect: [{
+      _any: true, type: 'fixedOrder', orderTypeId: 'pepe', orderTypeName: '特别独占订单', ignoreOrderEfficiency: true,
+    }],
+  },
+  {
+    buffId: 'trade_ord_closure[000]',
+    note: '可露希尔：同样要落 orderTypeId，但原文没有「不受订单效率影响」，不能标 ignore',
+    expect: [{
+      _any: true, type: 'fixedOrder', orderTypeId: 'closure', ignoreOrderEfficiency: null,
+    }],
+  },
+  {
+    buffId: 'trade_ord_law[000]',
+    note: '但书：「下笔赤金订单交付数小于4则视为违约订单」只对赤金订单生效',
+    expect: [{ _any: true, type: 'fixedOrder', product: '贵金属' }],
+  },
+  {
+    buffId: 'trade_ord_par&per[001]',
+    note: '赫德雷：「当伊内丝、W入驻工作场所时…分别额外+5%」是两人各 +5%，不能合并成一条',
+    expectLength: 3,
+    expect: [
+      { value: 30, condition: null },
+      { value: 5, condition: { type: 'charInRoom', char: '伊内丝', room: 'TRADING', excludeAssist: true } },
+      { value: 5, condition: { type: 'charInRoom', char: 'W', room: 'TRADING', excludeAssist: true } },
+    ],
+  },
+  {
+    buffId: 'train_spd_bd&reduceTime[000]',
+    note: '左乐：「协助近卫干员训练专精技能至1级立即完成」：职业与等级不能丢',
+    expect: [{
+      _any: true, type: 'trainingSpeed', subtype: 'instantComplete',
+      profession: '近卫', condition: { type: 'trainToLevel', level: 1 },
     }],
   },
 ]

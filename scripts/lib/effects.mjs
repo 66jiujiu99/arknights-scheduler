@@ -1838,7 +1838,9 @@ export function parseBuff(buff) {
 
   // 「基建内（不包含副手及活动室使用者）每有1名X干员」：这类计数不含副手与活动室使用者。
   // 副手、活动室(PRIVATE)在本仓库都未建模，只能用标志位表达，避免下游把副手也算进人数。
-  if (/不包含副手/.test(plainAll)) {
+  // 需要 override 之后重跑一次（见函数末尾），否则 override 重建 effects 会把它丢掉。
+  const applyExcludeAssist = () => {
+    if (!/不包含副手/.test(plainAll)) return
     for (const e of effects) {
       // 只作用于"按人数/设施数在基建范围内计数"的那类效果；
       // 同一 buff 里「控制中枢内所有干员心情恢复」是另一句，不受该限定影响。
@@ -1846,6 +1848,30 @@ export function parseBuff(buff) {
         'allDormitory', 'allManufacture', 'allTrading'].includes(String(e.target || ''))
       if (e.per || baseWide) e.excludeAssist = true
     }
+  }
+  applyExcludeAssist()
+
+  // 限定写在条件从句里时（「当伊内丝入驻工作场所时（不包含副手）」），
+  // 标志位要落到 condition 上——condition 层没有别处能表达。
+  for (const e of effects) {
+    const c = e.condition
+    if (!c || c.excludeAssist) continue
+    if (/不包含副手/.test(String(c.text || ''))) c.excludeAssist = true
+    // 「当伊内丝、W入驻工作场所时」：房间写不出具体设施，但"同一个工作场所"
+    // 就是效果自身所在房间，room 为 null 会让下游无法判断。
+    if ((c.type === 'charInRoom' || c.type === 'withCharInRoom') && !c.room && e.room) c.room = e.room
+  }
+
+  // 「当伊内丝、W入驻工作场所时，订单获取效率分别额外+5%」：两人各 +5%，
+  // 合并成一条按一个人算会少一半（原文有「分别」才是各算一份）。
+  for (let i = effects.length - 1; i >= 0; i -= 1) {
+    const e = effects[i]
+    const c = e.condition
+    if (!c || c.type !== 'charInRoom' || !/、/.test(String(c.char || ''))) continue
+    if (!/分别/.test(String(e.text || ''))) continue
+    const names = String(c.char).split('、').map((s) => s.trim()).filter(Boolean)
+    if (names.length < 2) continue
+    effects.splice(i, 1, ...names.map((n) => ({ ...e, condition: { ...c, char: n } })))
   }
 
   // 「每名行医干员为当前干员的专精技能训练速度+10%」：行医是分支，原文里没有标记，
@@ -1928,7 +1954,7 @@ export function parseBuff(buff) {
     // 数值完全相同，去掉 resourceId 就会被去重成一条，两条资源加成变一条。
     const sig = [e.type, e.room, e.target, e.value, e.unit, e.product, e.per, e.perValue,
       e.subtype, e.forced, e.resourceId, e.sourceResourceId, e.factionId, e.tagId,
-      JSON.stringify(e.countScope || null), String(e.text)].join('|')
+      JSON.stringify(e.countScope || null), JSON.stringify(e.condition || null), String(e.text)].join('|')
     if (seenFx.has(sig)) continue
     seenFx.add(sig)
     dedup.push(e)
@@ -1994,6 +2020,14 @@ export function parseBuff(buff) {
       effects.push({ ...e, source: buff.buffId, text: e.text || descText })
     }
     unparsed.length = 0
+    // override 是整条重建，前面基于原文的通用 pass 结果会被丢掉，这里补跑一次
+    applyExcludeAssist()
+    for (const e of effects) {
+      if (e.type === 'orderLimit' && e.min == null) {
+        const m = String(e.text || '').match(/(?:最少|至少|下限)\s*为?\s*(\d+)/)
+        if (m) e.min = Number(m[1])
+      }
+    }
   }
 
   const manualReview = unparsed.length
