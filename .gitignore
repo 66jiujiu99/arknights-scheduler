@@ -4,3 +4,10 @@ dist/
 *.local
 .env
 .cache/
+
+# 审核期间的一次性探查脚本与 diff 输出
+docs/review/tools/*-1.mjs
+docs/review/tools/*-1.js
+docs/review/tools/diff-out.txt
+docs/review/tools/_dbgmod.mjs
+docs/review/tools/regress-*
