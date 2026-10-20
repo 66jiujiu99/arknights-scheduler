@@ -1,6 +1,6 @@
 # 罗德岛排班 v5
 
-> 明日方舟基建排班工具 · 纯静态 · GitHub Pages
+> 明日方舟基建排班工具 · 纯静态 · Cloudflare Pages
 >
 > 当前数据版本：2026-10（昨日海）
 
@@ -19,7 +19,7 @@
 - 莱茵生命 / Rhine Lab 视觉：暖灰纸面、墨黑、暖杏金、档案式编号与细线。
 - 没有后端：凭证只存浏览器 localStorage；请求由浏览器直连森空岛。
 - 浏览器侧包含设备指纹生成与请求签名（vendor 的 skland-kit 浏览器 bundle）。
-- 游戏数据在构建时生成静态 JSON，页面运行时只读。
+- 游戏数据在构建时生成静态 JSON，页面运行时只读；当前技能数据为 **effect schema v2**（929 技能 / 1241 条 effect，manualReview 2）。
 
 ## 登录
 
@@ -139,3 +139,12 @@ MIT
 
 - 干员技能 effect schema：[operator-skill-schema.md](docs/operator-skill-schema.md)
 - 929 条技能 effects 全量审核任务提示词：[干员技能effects审核-任务提示词.md](docs/tasks/干员技能effects审核-任务提示词.md)
+
+## 技能数据审核
+
+- 全量核对 763 个唯一 buffId、929 条技能，最终 effect 1241 条、manualReview 2。
+- 汇总：[docs/review/SUMMARY.md](docs/review/SUMMARY.md)
+- 收口：[docs/review/完整性审计.md](docs/review/完整性审计.md)
+- 修复状态：[docs/review/修复状态.md](docs/review/修复状态.md)
+- 口径决策：[docs/review/口径决策.md](docs/review/口径决策.md)
+- schema：[docs/operator-skill-schema.md](docs/operator-skill-schema.md)
