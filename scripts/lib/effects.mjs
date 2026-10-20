@@ -504,7 +504,7 @@ const CONDITION_RULES = [
 ]
 
 // “每小时”“时”这类是时间单位或从句助词，不是条件触发词。
-const CONDITION_TRIGGERS = /如果|若|当与|当自身|当.{1,12}时|只有|反之|达到.{0,4}小时|处于.{0,8}以下|.{0,6}以上时|小于|大于|满心情|心情未满|心情消耗为|线索交流时|没有进驻|下笔|每产生|次加工没有|分支为|专精技能至|进驻在|入驻|一起工作|大于等于|必定|连续消耗/
+const CONDITION_TRIGGERS = /如果|若|当与|当自身|当.{1,12}时|只有|反之|达到.{0,4}小时|处于.{0,8}以下|.{0,6}以上时|小于|大于|满心情|心情未满|心情\s*\d+\s*以下|心情消耗为|线索交流时|没有进驻|下笔|每产生|次加工没有|分支为|专精技能至|进驻在|入驻|一起工作|大于等于|必定|连续消耗|技能专精/
 
 // 从句里出现的数字（阈值/分母），保存下来避免解析时丢失。
 const CLAUSE_NUM_PATTERNS = [
@@ -929,8 +929,9 @@ function parseSegment(buff, seg, allTokens, ctx) {
 
 // ---------------------------------------------------------------- 房间特殊规则
 
-// 会客室线索倾向：没有数值，只有派系偏向
-const CLUE_BIAS_RE = /更容易获得(.+?)线索|增加(.+?)线索的出现概率/
+// 会客室线索倾向：没有数值，只有派系偏向。
+// 句式有两种：「更容易获得X线索」与「增加X线索的概率」（后者出现在人力办公室技能里）。
+const CLUE_BIAS_RE = /更容易获得(.+?)线索|增加(.+?)线索的出现概率|增加(.+?)线索的概率/
 
 // 线索派系表（《罗德岛基建·会客室》7 份线索的固定编号）：
 // 1 莱茵生命 2 企鹅物流 3 黑钢 4 乌萨斯学生自治团 5 格拉斯哥帮 6 喀兰贸易 7 罗德岛制药
@@ -964,7 +965,7 @@ function parseMeetingExtra(buff, t) {
     ? 'notOwned'
     : (/已经拥有|已拥有|已持有/.test(m[0]) ? 'owned' : undefined)
   // 「尚未拥有的」「已经拥有的」是线索范围（clueTarget），不是派系名，不能拿来查派系表。
-  const nameInText = stripMarkers(m[1] || m[2] || '').trim() || null
+  const nameInText = stripMarkers(m[1] || m[2] || m[3] || '').trim() || null
   const rawName = factionTok ? factionTok.text : (target ? null : nameInText)
   const clue = clueFactionOf(rawName)
   const effect = {
@@ -1376,8 +1377,15 @@ function applyPending(e, pc) {
     if (pc.clauseNumbers && e.condition && !e.condition.numbers) e.condition.numbers = pc.clauseNumbers
   } else if (pc.condition && pc.condition.text && !e.condition.extra) {
     // 效果自带的条件（如配方阈值）与前置从句的条件（如「宿舍内每有10名…」）
-    // 是两件事，不能互相覆盖，前置从句保留在 extra 里
-    e.condition.extra = pc.condition.text
+    // 是两件事，不能互相覆盖，前置从句保留在 extra 里。
+    // 能从类型字段承载的（onContact / factionInFacility / dormLowMoodCount…）就存对象，
+    // 只存中文串下游还得再解析一遍。
+    if (pc.condition.type && !['other', 'trigger'].includes(pc.condition.type)) {
+      const { numbers: _numbers, ...rest } = pc.condition
+      e.condition.extra = [rest]
+    } else {
+      e.condition.extra = pc.condition.text
+    }
   }
   if (pc.factionId && !e.factionId) { e.factionId = pc.factionId; e.factionName = pc.factionName }
   if (pc.tagId && !e.tagId) { e.tagId = pc.tagId; e.tagName = pc.tagName }
@@ -1810,6 +1818,15 @@ export function parseBuff(buff) {
         if (/其他/.test(raw) || /^与其他|其他.+干员/.test(String(c.text || ''))) c.excludeSelf = true
       }
     }
+    // 「若外势大于等于实地」：两侧的资源 id 也在 <$cc.bd_*> 标记里，只留中文名下游对不上资源
+    if (c.type === 'resourceCompare') {
+      for (const side of ['left', 'right']) {
+        if (c[side + 'Id']) continue
+        const tok = t.tokens.find((x) => x.kind === 'bd'
+          && stripMarkers(String(x.text || '')).trim() === String(c[side] || '').trim())
+        if (tok) c[side + 'Id'] = tok.id
+      }
+    }
     if (['factionInFacility', 'dormFactionMoodFull', 'withFactionInRoom', 'factionCountAtLeast'].includes(c.type)
       && !c.factionId) {
       const tok = tokenByName(c.faction)
@@ -1872,6 +1889,26 @@ export function parseBuff(buff) {
     const names = String(c.char).split('、').map((s) => s.trim()).filter(Boolean)
     if (names.length < 2) continue
     effects.splice(i, 1, ...names.map((n) => ({ ...e, condition: { ...c, char: n } })))
+  }
+
+  // condition.extra 统一成对象数组（决策 7）。历史上有个别路径把额外条件写成了中文串，
+  // 混着两种形态会让下游要么漏判、要么再解析一遍中文。
+  for (const e of effects) {
+    const c = e.condition
+    if (!c || !c.extra || Array.isArray(c.extra)) continue
+    const raw = String(c.extra).trim()
+    const typed = detectCondition(raw)
+    c.extra = typed && !['other', 'trigger'].includes(typed.type)
+      ? [{ type: typed.type, ...(typed.threshold != null ? { threshold: typed.threshold } : {}), text: raw }]
+      : [raw]
+  }
+
+  // 「心情耗尽时清空所有记忆碎片和自身累积的感知信息」：清空是独立机制，
+  // 不落标志位下游会以为资源只增不减。
+  if (/心情耗尽时清空/.test(plainAll)) {
+    for (const e of effects) {
+      if (e.type === 'specialResource') e.resetOnMoodExhausted = true
+    }
   }
 
   // 「每名行医干员为当前干员的专精技能训练速度+10%」：行医是分支，原文里没有标记，

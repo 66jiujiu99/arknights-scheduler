@@ -179,7 +179,10 @@ export const CASES = [
     note: '配方阈值4 与「宿舍每10名心情<12干员」并存，且按人数叠加（分母 10 不能丢成 1）',
     expect: [{
       type: 'workshopMoodCost', value: 1, per: 'operator', perValue: 10,
-      condition: { type: 'recipeMoodCost', threshold: 4, extra: '宿舍内每有10名心情12以下的干员时' },
+      condition: { type: 'recipeMoodCost', threshold: 4 },
+      // 「宿舍内每有10名心情12以下的干员」是并列条件，落 condition.extra（决策 7）
+      'condition.extra.0.type': 'dormLowMoodCount',
+      'condition.extra.0.threshold': 12,
     }],
   },
   {

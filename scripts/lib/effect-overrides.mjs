@@ -118,4 +118,15 @@ export const EFFECT_OVERRIDES = {
       },
     ],
   },
+
+  // 「控制中枢内每个鲤氏侦探事务所干员**可使该派系干员额外恢复心情**，同时每人可使控制中枢内
+  // 所有干员的心情每小时恢复+0.2」：前半句在原始数据里完全没有数值（概念型加成），
+  // 不落一条 effect 下游会以为它不存在。
+  'control_mp_cost&faction2[000]': {
+    note: '前半句无数值（同派系额外恢复，概念型），后半句 +0.2 按 lda 人数叠加',
+    effects: [
+      { type: 'moodRecovery', room: 'CONTROL', unit: 'perHour', target: 'control', value: 0.2, per: 'factionMember', perValue: 1, factionId: 'lda', factionName: '鲤氏侦探事务所', stacking: 'stack' },
+      { type: 'specialBonus', room: 'CONTROL', target: 'roomMembers', value: 1, unit: 'flag', subtype: 'extraMoodRecovery', factionId: 'lda', factionName: '鲤氏侦探事务所', per: 'factionMember', perValue: 1, stacking: 'special' },
+    ],
+  },
 }
