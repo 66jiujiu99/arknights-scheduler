@@ -190,7 +190,7 @@ function controlScore(person) {
   return score
 }
 
-function takeOperators(pool, usedInQueue, usedCount, maxShifts, count, scorer, preferred) {
+function takeOperators(pool, usedInQueue, usedCount, maxShifts, count, scorer, preferred, preferredGroups = [], reserved = new Set()) {
   const picks = []
   const canUse = (p) => {
     const used = usedCount.get(p.char.charId) || 0
@@ -199,7 +199,17 @@ function takeOperators(pool, usedInQueue, usedCount, maxShifts, count, scorer, p
     if (used >= 1 && (p.all || []).some((skill) => Number(skill.mood || 0) >= 1)) return false
     return !usedInQueue.has(p.char.charId)
   }
-  if (preferred && preferred.length) {
+  if (preferredGroups && preferredGroups.length) {
+    for (const group of preferredGroups) {
+      if (picks.length + group.members.length > count) continue
+      if (!group.members.every((p) => canUse(p))) continue
+      for (const p of group.members) {
+        picks.push(p)
+        usedInQueue.add(p.char.charId)
+      }
+      break
+    }
+  } else if (preferred && preferred.length) {
     for (const id of preferred) {
       if (picks.length >= count) break
       const p = pool.find((x) => x.char.charId === id)
@@ -223,6 +233,16 @@ function takeOperators(pool, usedInQueue, usedCount, maxShifts, count, scorer, p
   // still gives the facility's +1% base efficiency.
   if (picks.length < count) {
     const rest = pool
+      .filter((p) => canUse(p) && !usedInQueue.has(p.char.charId) && !reserved.has(p.char.charId))
+      .sort((a, b) => a.bestValue - b.bestValue)
+    for (const p of rest) {
+      if (picks.length >= count) break
+      picks.push(p)
+      usedInQueue.add(p.char.charId)
+    }
+  }
+  if (picks.length < count) {
+    const rest = pool
       .filter((p) => canUse(p) && !usedInQueue.has(p.char.charId))
       .sort((a, b) => a.bestValue - b.bestValue)
     for (const p of rest) {
@@ -234,13 +254,26 @@ function takeOperators(pool, usedInQueue, usedCount, maxShifts, count, scorer, p
   return picks
 }
 
-function buildControlOps(pool, usedInQueue, usedCount, maxShifts, slots, data) {
-  const preferred = []
+function preferredComboGroups(pool, data, facility, slots) {
+  const groups = []
   for (const combo of data.combos || []) {
-    if (combo.facility !== 'CONTROL') continue
-    if (combo.members.length <= slots) preferred.push(...combo.members)
+    if (combo.facility !== facility) continue
+    if (!Array.isArray(combo.members) || combo.members.length > slots) continue
+    const members = combo.members.map((id) => pool.find((p) => p.char.charId === id)).filter(Boolean)
+    if (members.length !== combo.members.length) continue
+    const effect = combo.effect || {}
+    const comboValue = Number(effect.tradeEfficiency || effect.manufactureEfficiency || effect.controlEfficiency || 0) * 100
+    const skillValueSum = members.reduce((sum, p) => {
+      const skill = p.byRoom?.[facility]
+      return sum + (skill ? skillValue(skill, facility) : 0)
+    }, 0)
+    groups.push({ combo, members, value: comboValue + skillValueSum })
   }
-  const picked = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, controlScore, preferred)
+  return groups.sort((a, b) => b.value - a.value)
+}
+
+function buildControlOps(pool, usedInQueue, usedCount, maxShifts, slots, data, reserved = new Set()) {
+  const picked = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, controlScore, [], preferredComboGroups(pool, data, 'CONTROL', slots), reserved)
   return picked.map((p) => {
     const skills = p.all.filter((s) => s.room === 'CONTROL')
     return { ...p, skills }
@@ -318,6 +351,7 @@ function comboBonus(assigned, roomType, data) {
 function assignQueue(pool, base, data, mix, usedCount, opts) {
   const maxShifts = opts.maxShifts != null ? Number(opts.maxShifts) : (opts.mode === 'manual' ? 2 : 1)
   const usedInQueue = new Set()
+  const comboReserved = new Set((data.combos || []).flatMap((combo) => combo.members || []))
   const assigned = {
     CONTROL: [], MANUFACTURE: [], TRADING: [], POWER: [], MEETING: [], HIRE: [],
     TRAINING: [], WORKSHOP: [], RECYCLE: [],
@@ -326,7 +360,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
     for (const p of picks) usedCount.set(p.char.charId, (usedCount.get(p.char.charId) || 0) + 1)
   }
 
-  const controlOps = buildControlOps(pool, usedInQueue, usedCount, maxShifts, base.controlLevel, data)
+  const controlOps = buildControlOps(pool, usedInQueue, usedCount, maxShifts, base.controlLevel, data, comboReserved)
   assigned.CONTROL = controlOps.map((p) => ({
     charId: p.char.charId,
     name: p.char.name,
@@ -353,12 +387,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       if (!skill) return 0
       return skillValue(skill, 'MANUFACTURE') - Math.max(0, Number(skill.mood || 0)) * 4
     }
-    const preferred = []
-    for (const combo of data.combos || []) {
-      if (combo.facility !== 'MANUFACTURE') continue
-      if (combo.members.length <= slots) preferred.push(...combo.members)
-    }
-    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, preferred)
+    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, [], preferredComboGroups(pool, data, 'MANUFACTURE', slots), comboReserved)
     assigned.MANUFACTURE.push({
       roomId: room.id,
       level: room.level,
@@ -383,12 +412,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       s -= Math.max(0, Number(skill.mood || 0)) * 4
       return s
     }
-    const preferred = []
-    for (const combo of data.combos || []) {
-      if (combo.facility !== 'TRADING') continue
-      if (combo.members.length <= slots) preferred.push(...combo.members)
-    }
-    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, preferred)
+    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, [], preferredComboGroups(pool, data, 'TRADING', slots), comboReserved)
     assigned.TRADING.push({
       roomId: room.id,
       level: room.level,
@@ -407,7 +431,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       const skill = p.byRoom.POWER
       return skill ? skillValue(skill, 'POWER') : 0
     }
-    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer)
+    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, [], [], comboReserved)
     assigned.POWER.push({
       roomId: room.id, level: room.level,
       ops: picks.map((p) => ({ charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, factions: p.char.factions, skill: p.byRoom.POWER || null })),
@@ -432,7 +456,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       const value = roomType === 'TRAINING' ? skillValue(skill, roomType) * 0.8 : skillValue(skill, roomType)
       return value - mood * 6
     }
-    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer)
+    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, [], [], comboReserved)
     assigned[key] = picks.map((p) => ({ charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, factions: p.char.factions, skill: p.byRoom[roomType] || null }))
     increment(picks)
   }

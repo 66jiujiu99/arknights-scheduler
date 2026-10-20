@@ -610,3 +610,22 @@ test('characters 暴露 factions，与效果里的 factionId 同一套命名', (
   const missing = [...used].filter((f) => !owned.has(f))
   assert.deepEqual(missing, [], '这些 factionId 找不到任何干员: ' + missing.join(','))
 })
+
+
+test('combo members are reserved together instead of split across rooms', () => {
+  const characters = {
+    texas: { id: 'texas', name: '德克萨斯', rarity: 5, profession: '先锋', skills: [] },
+    lappland: { id: 'lappland', name: '拉普兰德', rarity: 5, profession: '近卫', skills: [] },
+    other: { id: 'other', name: '其他干员', rarity: 5, profession: '近卫', skills: [] },
+  }
+  const combos = [{ id: 'texas_lappland', name: '德州+拉普', facility: 'TRADING', members: ['texas', 'lappland'], effect: { tradeEfficiency: 0.65 } }]
+  const player = mkPlayer([{ id: 'texas' }, { id: 'lappland' }, { id: 'other' }, ...pool(30)])
+  const result = generatePlans(player, BASE, mkData(characters, combos), {
+    mode: 'oneclick', operationsPerDay: 2, products: ['赤金', '赤金', '赤金'], strategies: ['龙门商法', '龙门商法', '龙门商法'],
+    drones: false, weights: { lmd: 100, exp: 0, orundum: 0, trust: 0 },
+  })
+  const queue = result.candidates[0].queues[0]
+  const room = queue.assigned.TRADING.find((r) => r.ops.some((o) => o.charId === 'texas'))
+  assert.ok(room, 'texas should be assigned')
+  assert.ok(room.ops.some((o) => o.charId === 'lappland'), 'lappland must be in the same room')
+})
