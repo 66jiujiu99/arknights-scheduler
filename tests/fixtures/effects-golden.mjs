@@ -365,8 +365,11 @@ export const CASES = [
   // ── flag 类 value 统一为 1 ───────────────────────────────────────────
   {
     buffId: 'trade_ord_vodfox[000]',
-    note: '巫恋：其他干员订单效率全部归零——归零语义在 resets，value 应为 1',
-    expect: [{ _any: true, type: 'resetOthers', value: 1, resets: 'orderEfficiency' }],
+    note: '巫恋：其他干员订单效率全部归零（flag 语义在 resets），且「每人+45%」逐人叠加',
+    expect: [
+      { _any: true, type: 'resetOthers', value: 1, resets: 'orderEfficiency' },
+      { _any: true, type: 'orderEfficiency', value: 45, per: 'operator', perValue: 1 },
+    ],
   },
   {
     buffId: 'dorm_exchangeAp[000]',
@@ -389,10 +392,11 @@ export const CASES = [
   },
   {
     buffId: 'control_tra_limit&spd3[000]',
-    note: '凛御银灰：「存在3名谢拉格干员的贸易站」是按站门槛，不是每3人叠加一次',
+    note: '凛御银灰：「存在3名谢拉格干员的贸易站」是按站门槛（不是每3人叠加），符合条件的那座站叠加',
     expectLength: 1,
     expect: [{
-      type: 'orderEfficiency', target: 'allTrading', value: 10, per: null, perValue: null,
+      type: 'orderEfficiency', target: 'allTrading', value: 10,
+      per: 'tradingStation', perValue: 1,
       condition: { type: 'factionCountAtLeast', factionId: 'karlan', threshold: 3 },
     }],
   },
@@ -422,5 +426,43 @@ export const CASES = [
       { type: 'specialResource', value: 15, resourceId: 'bd_b1', condition: { type: 'selfMoodAbove', threshold: 12 } },
       { type: 'specialResource', value: 10, resourceId: 'bd_a1', condition: { type: 'selfMoodBelow', threshold: 12 } },
     ],
+  },
+
+  // ── 第三轮复验发现的问题 ─────────────────────────────────────────────
+  {
+    buffId: 'manu_prod_spd&limit&bd[000]',
+    note: '泰拉大陆调查团：「生产力+5%」是无条件的，只有「每有1个木天蓼+1%」才带条件',
+    expectLength: 3,
+    expect: [
+      { type: 'capacity', value: 8, condition: null },
+      { type: 'productivity', value: 5, condition: null },
+      { type: 'productivity', value: 1, per: 'resourcePoint', resourceId: 'bd_felyne' },
+    ],
+  },
+  {
+    buffId: 'dorm_rec_oneself2[000]',
+    note: '芳汀：「每人额外为自身+0.05」同样逐人叠加',
+    expect: [{ _any: true, type: 'moodRecovery', value: 0.05, per: 'operator', perValue: 1 }],
+  },
+  {
+    buffId: 'train_spd&profession3[131]',
+    note: '「如果训练位干员分支为驭法铁卫」要结构化成分支条件，不能只留中文',
+    expect: [{
+      _any: true, type: 'trainingSpeed', value: 45, profession: '重装',
+      condition: { type: 'traineeBranch', branch: '驭法铁卫' },
+    }],
+  },
+  {
+    buffId: 'meet_spd_notOwned&exchange[000]',
+    note: '骋风：「处于线索交流时」只在线索交流期间生效，条件不能丢',
+    expect: [{ _any: true, type: 'clueBias', clueTarget: 'notOwned', condition: { type: 'clueExchange' } }],
+  },
+  {
+    buffId: 'power_rec_spd_P[001]',
+    note: '「如果逻各斯进驻在训练室协助位」：房间必须解析成 TRAINING，不能是 null',
+    expect: [{
+      _any: true, type: 'droneCharge', value: 5,
+      condition: { type: 'charInRoom', char: '逻各斯', room: 'TRAINING' },
+    }],
   },
 ]

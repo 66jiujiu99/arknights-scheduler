@@ -35,7 +35,7 @@ export const ROOM_CN = {
 const ROOM_ALIASES = {
   '制造站': 'MANUFACTURE', '贸易站': 'TRADING', '发电站': 'POWER', '控制中枢': 'CONTROL',
   '宿舍': 'DORMITORY', '加工站': 'WORKSHOP', '人力办公室': 'HIRE', '办公室': 'HIRE',
-  '训练室': 'TRAINING', '回收站': 'RECYCLE', '会客室': 'MEETING', '活动室': 'PRIVATE',
+  '训练室': 'TRAINING', '训练室协助位': 'TRAINING', '回收站': 'RECYCLE', '会客室': 'MEETING', '活动室': 'PRIVATE',
 }
 
 // building_data 的 buff.targets 是官方的产物/配方筛选，比中文描述更权威。
@@ -329,6 +329,8 @@ const PER_RULES = [
   [/订单上限/, { per: 'orderLimit' }],
   [/无人机上限/, { per: 'droneCap' }],
   [/宿舍内每有\d+名干员|每有\d+名干员/, { per: 'operator' }],
+  // 「每人/每名 X 干员」是逐人叠加；早期规则只认「每有N名」，导致 +45%、+0.05 只算一份
+  [/每名|每人/, { per: 'operator' }],
 ]
 
 // “每小时”里的“每”不是叠加单位，需要排除。
@@ -420,7 +422,7 @@ const CONDITION_RULES = [
   [/处于\s*(\d+)\s*点及以上/, (m) => ({ type: 'resourceAtLeast', threshold: Number(m[1]) })],
   [/单次工作时长达到\s*(\d+)\s*小时/, (m) => ({ type: 'shiftHoursAtLeast', hours: Number(m[1]) })],
   [/训练专精技能至\s*(\d+)\s*级/, (m) => ({ type: 'trainToLevel', level: Number(m[1]) })],
-  [/如果训练位干员分支为\s*([^，；]+?)\s*，?则/, (m) => ({ type: 'traineeBranch', branch: m[1] })],
+  [/如果训练位干员分支为\s*([^，；]+?)\s*(?:，|则|$)/, (m) => ({ type: 'traineeBranch', branch: m[1].trim() })],
   [/如训练室有干员在进行技能专精|训练室有干员在进行技能专精/, () => ({ type: 'trainingInProgress' })],
   [/若(外势|实地)大于等于(外势|实地)/, (m) => ({ type: 'resourceCompare', left: m[1], right: m[2], op: 'gte' })],
   [/若(外势|实地)大于(外势|实地)/, (m) => ({ type: 'resourceCompare', left: m[1], right: m[2], op: 'gt' })],
@@ -442,6 +444,8 @@ const CONDITION_RULES = [
   [/当(.+?)入驻(.+?)时/, (m) => ({ type: 'charInRoom', char: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
   // 「如果有2台以上作业平台进驻在发电站」讲的是数量/TAG，不是某个具名干员，别被下面这条抢走
   [/如果(?!\d+台以上)(.+?)进驻在(.+?)(?:[，）]|$)|如果(.+?)进驻(.+?)时/, (m) => ({ type: 'charInRoom', char: m[1] || m[3], room: ROOM_ALIASES[(m[2] || m[4] || '').trim()] || null })],
+  // 「若焰狐龙梓兰进驻控制中枢，则线索搜集速度提升10%」
+  [/若(.+?)进驻在?(.+?)(?:[，）]|则|$)/, (m) => ({ type: 'charInRoom', char: m[1], room: ROOM_ALIASES[(m[2] || '').trim()] || null })],
   [/如果目标是(.+?)，则|如果目标是(.+?)$/, (m) => ({ type: 'targetIs', text: m[1] || m[2] })],
   [/若(.+?)大于等于(.+?)，|若(.+?)大于(.+?)，/, (m) => ({ type: 'resourceCompare', left: m[1] || m[3], right: m[2] || m[4] })],
   [/每产生\d+次联络次数/, () => ({ type: 'onContact' })],
@@ -887,6 +891,16 @@ function parseMeetingExtra(buff, t) {
   if (/工作时长影响概率|工作时长和招募位影响概率/.test(plain)) {
     effect.condition = { type: 'workTimeAffectsProbability', text: plain }
   }
+  // 「处于线索交流时更容易获得尚未拥有的线索」：只在交流期间生效
+  if (/处于线索交流时|线索交流时/.test(plain)) {
+    effect.condition = {
+      ...(effect.condition || {}),
+      type: effect.condition ? effect.condition.type : 'clueExchange',
+      exchange: true,
+      text: plain,
+    }
+    if (!effect.condition.extra) effect.condition.extra = [{ type: 'clueExchange', text: '处于线索交流时' }]
+  }
   return effect
 }
 
@@ -1030,6 +1044,9 @@ function parseContinuation(buff, seg, allTokens, prevEffects) {
 
   // 纯条件从句（没有数字）：合并进上一条的 condition，标记为未识别但可解释
   if (!nums.length) {
+    // 「同时每有1个木天蓼，则生产力+1%」是下一条效果的分母从句，不能回溯挂到
+    // 当前效果上——否则「生产力+5%」这种无条件效果会凭空多出条件，木天蓼为 0 时加成丢失。
+    if (/每(?:有|名|个|点|间|级|瓶|台|架|格)/.test(text)) return null
     if (!prev.condition) prev.condition = { type: 'other', text: stripMarkers(text).trim() }
     prev.condition.extra = stripMarkers(text).trim()
     return { skip: true }
@@ -1237,7 +1254,9 @@ function applyPending(e, pc) {
   if (pc.tagId && !e.tagId) { e.tagId = pc.tagId; e.tagName = pc.tagName }
   if (pc.resourceId && !e.resourceId) { e.resourceId = pc.resourceId; e.resourceName = pc.resourceName }
   if (pc.cap != null && e.cap == null) e.cap = pc.cap
-  if (pc.per && !e.per) e.per = pc.per
+  // 「每有1个深海猎人干员进驻在宿舍以外设施则消耗+0.5，反之则恢复+0.5」：
+  // 后者是与前者互斥的另一分支，逐人叠加的 per 不能跟过去。
+  if (pc.per && !e.per && !/^反之|^否则/.test(String(e.text || '')) ) e.per = pc.per
   if (pc.perValue != null && e.perValue == null) e.perValue = pc.perValue
   if (pc.product && !e.product) e.product = pc.product
   if (pc.profession && !e.profession && !e.professions) {
@@ -1430,6 +1449,10 @@ export function parseBuff(buff) {
             text: stripMarkers(seg.text).trim(),
             numbers: [th],
           },
+          // 满足条件的「每一个」贸易站都生效，不是只算一次
+          per: /贸易站/.test(exist[3]) ? 'tradingStation'
+            : (/制造站/.test(exist[3]) ? 'manufactureStation' : null),
+          perValue: 1,
         }
         continue
       }
@@ -1532,6 +1555,17 @@ export function parseBuff(buff) {
         keep.value = Math.abs(wholeAdd.final)
         keep.warmup = true
       }
+    }
+  }
+
+  // 「每人为自身+45%」「则每人额外为自身心情恢复+0.05」：显式写了"每人/每名"就是逐人叠加，
+  // 早期实现把 per=operator 当噪声丢掉，导致这类效果只算一份。
+  for (const e of effects) {
+    if (e.per) continue
+    const src = String(e.text || '') + ' ' + String((e.condition && e.condition.text) || '')
+    if (/每名|每人/.test(src) && !/每名干员$/i.test('')) {
+      e.per = 'operator'
+      if (e.perValue == null) e.perValue = 1
     }
   }
 
