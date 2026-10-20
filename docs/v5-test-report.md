@@ -8,7 +8,7 @@
 npm run test:optimizer
 ~~~
 
-结果：**效果 18 + golden 113 + 排班 27 + 选项 2 全绿**；`check:effects` 结构校验通过。
+结果：**效果 18 + golden 113 + 排班 29 + 选项 2 全绿**；`check:effects` 结构校验通过。
 
 覆盖范围：
 

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { buildBase, DEFAULT_MANUAL } from '../src/core/base.js'
-import { generatePlans } from '../src/core/optimizer.js'
+import { generatePlans, companionEfficiency } from '../src/core/optimizer.js'
 import { skillValue } from '../src/core/data.js'
 
 const facilities = JSON.parse(readFileSync(new URL('../public/data/v5/facilities.json', import.meta.url), 'utf8'))
@@ -219,6 +219,30 @@ test('combo is placed together and increases the score', () => {
   assert.ok(c.score.lmd > top(without).score.lmd, 'combo should increase LMD')
   const tr = c.queues[0].assigned.TRADING
   assert.ok(tr.some((r) => r.ops.some((o) => o.charId === 'texas') && r.ops.some((o) => o.charId === 'lapp')))
+})
+
+test('组合条件只在同房间成立于计入，且不与 combos 重复计数', () => {
+  const condEff = (value, condition) => ({ type: 'orderEfficiency', room: 'TRADING', unit: 'percent', value, condition })
+  const texas = {
+    charId: 'texas', name: '德克萨斯',
+    skill: { room: 'TRADING', effects: [condEff(65, { type: 'withCharInRoom', char: '拉普兰德', room: 'TRADING' })] },
+  }
+  const lapp = { charId: 'lapp', name: '拉普兰德', skill: { room: 'TRADING', effects: [] } }
+  const other = { charId: 'other', name: '路人', skill: { room: 'TRADING', effects: [] } }
+  // 单独进驻：条件不成立，+65% 不能计入
+  assert.equal(companionEfficiency([texas], 'TRADING', ''), 0)
+  // 与拉普兰德同房间：只计一次 +65%（组合条目 appliedByEffects，不再额外加）
+  assert.equal(companionEfficiency([texas, lapp], 'TRADING', ''), 65)
+  // 同房间但不是指定干员：不计
+  assert.equal(companionEfficiency([texas, other], 'TRADING', ''), 0)
+
+  // 阵营条件：同房间有该阵营干员才计
+  const factionEff = { type: 'productivity', room: 'MANUFACTURE', unit: 'percent', value: 10, condition: { type: 'factionInRoom', factionId: 'lgd' } }
+  const worker = { charId: 'w', name: '工人', skill: { room: 'MANUFACTURE', effects: [factionEff] } }
+  const chen = { charId: 'chen', name: '陈', factions: ['lgd'], skill: { room: 'MANUFACTURE', effects: [] } }
+  const x = { charId: 'x', name: '路人乙', factions: ['rh'], skill: { room: 'MANUFACTURE', effects: [] } }
+  assert.equal(companionEfficiency([worker, chen], 'MANUFACTURE', ''), 10)
+  assert.equal(companionEfficiency([worker, x], 'MANUFACTURE', ''), 0)
 })
 
 test('recommendations only include owned operators with locked skills', () => {
@@ -585,4 +609,23 @@ test('characters 暴露 factions，与效果里的 factionId 同一套命名', (
   const owned = new Set(chars.flatMap((c) => c.factions || []))
   const missing = [...used].filter((f) => !owned.has(f))
   assert.deepEqual(missing, [], '这些 factionId 找不到任何干员: ' + missing.join(','))
+})
+
+
+test('combo members are reserved together instead of split across rooms', () => {
+  const characters = {
+    texas: { id: 'texas', name: '德克萨斯', rarity: 5, profession: '先锋', skills: [] },
+    lappland: { id: 'lappland', name: '拉普兰德', rarity: 5, profession: '近卫', skills: [] },
+    other: { id: 'other', name: '其他干员', rarity: 5, profession: '近卫', skills: [] },
+  }
+  const combos = [{ id: 'texas_lappland', name: '德州+拉普', facility: 'TRADING', members: ['texas', 'lappland'], effect: { tradeEfficiency: 0.65 } }]
+  const player = mkPlayer([{ id: 'texas' }, { id: 'lappland' }, { id: 'other' }, ...pool(30)])
+  const result = generatePlans(player, BASE, mkData(characters, combos), {
+    mode: 'oneclick', operationsPerDay: 2, products: ['赤金', '赤金', '赤金'], strategies: ['龙门商法', '龙门商法', '龙门商法'],
+    drones: false, weights: { lmd: 100, exp: 0, orundum: 0, trust: 0 },
+  })
+  const queue = result.candidates[0].queues[0]
+  const room = queue.assigned.TRADING.find((r) => r.ops.some((o) => o.charId === 'texas'))
+  assert.ok(room, 'texas should be assigned')
+  assert.ok(room.ops.some((o) => o.charId === 'lappland'), 'lappland must be in the same room')
 })

@@ -21,6 +21,70 @@ const SHARD_RECIPES = {
 }
 const ORUNDUM_1_7 = { orundumPerAp: 1.09, lmdPerPull: 95400, stage: '1-7', source: '一图流 2026-10-20' }
 
+// ---------------------------------------------------------------- 组合（conditions 求值）
+// 「当与 X 在同一个贸易站时」「当前贸易站内存在某阵营干员时」这类条件依赖编制，
+// 静态值里已经排除（scripts/lib/effects.mjs 的 COMPANION_CONDITION_TYPES），
+// 必须按房间实际阵容求值，否则要么无条件生效、要么与 combos 重复计算。
+const COMPANION_CONDITION_TYPES = new Set([
+  'charInRoom', 'withCharInRoom', 'factionInRoom', 'withFactionInRoom',
+  'dormFactionMoodFull', 'otherMembersInRoom', 'aloneInRoom',
+  'factionInFacility', 'charInBase',
+])
+const COMPANION_EFFICIENCY_TYPES = new Set([
+  'productivity', 'orderEfficiency', 'clueSpeed', 'hireSpeed', 'trainingSpeed', 'droneCharge', 'recycleEfficiency',
+])
+const COMPANION_MOOD_TYPES = new Set(['moodRecovery', 'moodCost', 'moodCostReduction'])
+
+function companionEffectsOf(op, room) {
+  const skills = op.skills && op.skills.length ? op.skills : (op.skill ? [op.skill] : [])
+  return skills.flatMap((s) => (s.effects || []).filter((e) => e.condition && COMPANION_CONDITION_TYPES.has(e.condition.type)))
+}
+
+/** 条件是否被当前阵容满足。workplace 表示"任意工作设施"，本房间内有该干员即可。 */
+function companionSatisfied(effect, ownerId, ops) {
+  const c = effect.condition
+  if (!c) return false
+  const others = (ops || []).filter((o) => o.charId !== ownerId)
+  if (c.type === 'charInRoom' || c.type === 'withCharInRoom') {
+    if (!c.char) return false
+    const names = String(c.char).split(/[、,，]/).map((s) => s.trim()).filter(Boolean)
+    return others.some((o) => names.includes(o.name))
+  }
+  if (c.type === 'factionInRoom' || c.type === 'withFactionInRoom') {
+    if (!c.factionId) return false
+    return others.some((o) => (o.factions || []).includes(c.factionId))
+  }
+  if (c.type === 'otherMembersInRoom') return (ops || []).length > 1
+  if (c.type === 'aloneInRoom') return (ops || []).length === 1
+  return false
+}
+
+/** 组合条件带来的效率百分比（与原 skillSum 相加，单位：百分比）。 */
+export function companionEfficiency(ops, room, product) {
+  let sum = 0
+  for (const op of ops || []) {
+    for (const e of companionEffectsOf(op, room)) {
+      if (!COMPANION_EFFICIENCY_TYPES.has(e.type) || e.unit !== 'percent') continue
+      if (room === 'MANUFACTURE' && e.product && product && e.product !== product) continue
+      if (!companionSatisfied(e, op.charId, ops)) continue
+      sum += Number(e.value || 0)
+    }
+  }
+  return sum
+}
+
+/** 组合条件带来的心情增减（moodRecovery 正、moodCost 负、减免正）。 */
+function companionMoodDelta(op, ops, room) {
+  let delta = 0
+  for (const e of companionEffectsOf(op, room)) {
+    if (!COMPANION_MOOD_TYPES.has(e.type)) continue
+    if (!companionSatisfied(e, op.charId, ops)) continue
+    delta += e.type === 'moodCost' ? -Number(e.value || 0) : Number(e.value || 0)
+  }
+  return delta
+}
+
+
 function makeBalance(label, supply, demand) {
   const s = Math.max(0, Number(supply) || 0)
   const d = Math.max(0, Number(demand) || 0)
@@ -126,7 +190,7 @@ function controlScore(person) {
   return score
 }
 
-function takeOperators(pool, usedInQueue, usedCount, maxShifts, count, scorer, preferred) {
+function takeOperators(pool, usedInQueue, usedCount, maxShifts, count, scorer, preferred, preferredGroups = [], reserved = new Set()) {
   const picks = []
   const canUse = (p) => {
     const used = usedCount.get(p.char.charId) || 0
@@ -135,7 +199,17 @@ function takeOperators(pool, usedInQueue, usedCount, maxShifts, count, scorer, p
     if (used >= 1 && (p.all || []).some((skill) => Number(skill.mood || 0) >= 1)) return false
     return !usedInQueue.has(p.char.charId)
   }
-  if (preferred && preferred.length) {
+  if (preferredGroups && preferredGroups.length) {
+    for (const group of preferredGroups) {
+      if (picks.length + group.members.length > count) continue
+      if (!group.members.every((p) => canUse(p))) continue
+      for (const p of group.members) {
+        picks.push(p)
+        usedInQueue.add(p.char.charId)
+      }
+      break
+    }
+  } else if (preferred && preferred.length) {
     for (const id of preferred) {
       if (picks.length >= count) break
       const p = pool.find((x) => x.char.charId === id)
@@ -159,6 +233,16 @@ function takeOperators(pool, usedInQueue, usedCount, maxShifts, count, scorer, p
   // still gives the facility's +1% base efficiency.
   if (picks.length < count) {
     const rest = pool
+      .filter((p) => canUse(p) && !usedInQueue.has(p.char.charId) && !reserved.has(p.char.charId))
+      .sort((a, b) => a.bestValue - b.bestValue)
+    for (const p of rest) {
+      if (picks.length >= count) break
+      picks.push(p)
+      usedInQueue.add(p.char.charId)
+    }
+  }
+  if (picks.length < count) {
+    const rest = pool
       .filter((p) => canUse(p) && !usedInQueue.has(p.char.charId))
       .sort((a, b) => a.bestValue - b.bestValue)
     for (const p of rest) {
@@ -170,13 +254,26 @@ function takeOperators(pool, usedInQueue, usedCount, maxShifts, count, scorer, p
   return picks
 }
 
-function buildControlOps(pool, usedInQueue, usedCount, maxShifts, slots, data) {
-  const preferred = []
+function preferredComboGroups(pool, data, facility, slots) {
+  const groups = []
   for (const combo of data.combos || []) {
-    if (combo.facility !== 'CONTROL') continue
-    if (combo.members.length <= slots) preferred.push(...combo.members)
+    if (combo.facility !== facility) continue
+    if (!Array.isArray(combo.members) || combo.members.length > slots) continue
+    const members = combo.members.map((id) => pool.find((p) => p.char.charId === id)).filter(Boolean)
+    if (members.length !== combo.members.length) continue
+    const effect = combo.effect || {}
+    const comboValue = Number(effect.tradeEfficiency || effect.manufactureEfficiency || effect.controlEfficiency || 0) * 100
+    const skillValueSum = members.reduce((sum, p) => {
+      const skill = p.byRoom?.[facility]
+      return sum + (skill ? skillValue(skill, facility) : 0)
+    }, 0)
+    groups.push({ combo, members, value: comboValue + skillValueSum })
   }
-  const picked = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, controlScore, preferred)
+  return groups.sort((a, b) => b.value - a.value)
+}
+
+function buildControlOps(pool, usedInQueue, usedCount, maxShifts, slots, data, reserved = new Set()) {
+  const picked = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, controlScore, [], preferredComboGroups(pool, data, 'CONTROL', slots), reserved)
   return picked.map((p) => {
     const skills = p.all.filter((s) => s.room === 'CONTROL')
     return { ...p, skills }
@@ -240,11 +337,13 @@ function comboBonus(assigned, roomType, data) {
   for (const combo of data.combos || []) {
     if (combo.facility !== roomType) continue
     const ids = (assigned[roomType] || []).map((a) => a.charId)
-    if (combo.members.every((m) => ids.includes(m))) {
-      const effect = combo.effect || {}
-      bonus += Number(effect.tradeEfficiency || effect.manufactureEfficiency || effect.controlEfficiency || 0) * 100
-      used.push(combo.id)
-    }
+    if (!combo.members.every((m) => ids.includes(m))) continue
+    // 由 effects 派生的组合已按条件求值（companionEfficiency），数值不能再叠加，
+    // 否则就是"静态算一遍、组合再算一遍"的重复计数；但仍标记命中，便于界面展示。
+    if (combo.appliedByEffects) { used.push(combo.id); continue }
+    const effect = combo.effect || {}
+    bonus += Number(effect.tradeEfficiency || effect.manufactureEfficiency || effect.controlEfficiency || 0) * 100
+    used.push(combo.id)
   }
   return { bonus, used }
 }
@@ -252,6 +351,7 @@ function comboBonus(assigned, roomType, data) {
 function assignQueue(pool, base, data, mix, usedCount, opts) {
   const maxShifts = opts.maxShifts != null ? Number(opts.maxShifts) : (opts.mode === 'manual' ? 2 : 1)
   const usedInQueue = new Set()
+  const comboReserved = new Set((data.combos || []).flatMap((combo) => combo.members || []))
   const assigned = {
     CONTROL: [], MANUFACTURE: [], TRADING: [], POWER: [], MEETING: [], HIRE: [],
     TRAINING: [], WORKSHOP: [], RECYCLE: [],
@@ -260,12 +360,13 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
     for (const p of picks) usedCount.set(p.char.charId, (usedCount.get(p.char.charId) || 0) + 1)
   }
 
-  const controlOps = buildControlOps(pool, usedInQueue, usedCount, maxShifts, base.controlLevel, data)
+  const controlOps = buildControlOps(pool, usedInQueue, usedCount, maxShifts, base.controlLevel, data, comboReserved)
   assigned.CONTROL = controlOps.map((p) => ({
     charId: p.char.charId,
     name: p.char.name,
     rarity: p.char.rarity,
     profession: p.char.profession,
+    factions: p.char.factions,
     skills: p.skills,
   }))
   increment(controlOps)
@@ -286,12 +387,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       if (!skill) return 0
       return skillValue(skill, 'MANUFACTURE') - Math.max(0, Number(skill.mood || 0)) * 4
     }
-    const preferred = []
-    for (const combo of data.combos || []) {
-      if (combo.facility !== 'MANUFACTURE') continue
-      if (combo.members.length <= slots) preferred.push(...combo.members)
-    }
-    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, preferred)
+    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, [], preferredComboGroups(pool, data, 'MANUFACTURE', slots), comboReserved)
     assigned.MANUFACTURE.push({
       roomId: room.id,
       level: room.level,
@@ -299,7 +395,7 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       recipe: product === '源石碎片' ? (mix.shardRecipes?.[index] || '固源岩') : null,
       ops: picks.map((p) => {
         const skill = matchingSkill(p, 'MANUFACTURE', product)
-        return { charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, skill }
+        return { charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, factions: p.char.factions, skill }
       }),
     })
     increment(picks)
@@ -316,19 +412,14 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       s -= Math.max(0, Number(skill.mood || 0)) * 4
       return s
     }
-    const preferred = []
-    for (const combo of data.combos || []) {
-      if (combo.facility !== 'TRADING') continue
-      if (combo.members.length <= slots) preferred.push(...combo.members)
-    }
-    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, preferred)
+    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, [], preferredComboGroups(pool, data, 'TRADING', slots), comboReserved)
     assigned.TRADING.push({
       roomId: room.id,
       level: room.level,
       strategy,
       ops: picks.map((p) => {
         const skill = p.byRoom.TRADING || matchingSkill(p, 'TRADING', '')
-        return { charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, skill }
+        return { charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, factions: p.char.factions, skill }
       }),
     })
     increment(picks)
@@ -340,10 +431,10 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       const skill = p.byRoom.POWER
       return skill ? skillValue(skill, 'POWER') : 0
     }
-    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer)
+    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, [], [], comboReserved)
     assigned.POWER.push({
       roomId: room.id, level: room.level,
-      ops: picks.map((p) => ({ charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, skill: p.byRoom.POWER || null })),
+      ops: picks.map((p) => ({ charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, factions: p.char.factions, skill: p.byRoom.POWER || null })),
     })
     increment(picks)
   })
@@ -365,8 +456,8 @@ function assignQueue(pool, base, data, mix, usedCount, opts) {
       const value = roomType === 'TRAINING' ? skillValue(skill, roomType) * 0.8 : skillValue(skill, roomType)
       return value - mood * 6
     }
-    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer)
-    assigned[key] = picks.map((p) => ({ charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, skill: p.byRoom[roomType] || null }))
+    const picks = takeOperators(pool, usedInQueue, usedCount, maxShifts, slots, scorer, [], [], comboReserved)
+    assigned[key] = picks.map((p) => ({ charId: p.char.charId, name: p.char.name, rarity: p.char.rarity, factions: p.char.factions, skill: p.byRoom[roomType] || null }))
     increment(picks)
   }
 
@@ -390,7 +481,8 @@ function skillSum(ops, room, product) {
 }
 
 function rateForManufacture(product, ops, control, combo, level) {
-  const base = 1 + 0.01 * (ops || []).length + skillSum(ops, 'MANUFACTURE', product) / 100 + control.manufacture / 100 + combo / 100
+  const companion = companionEfficiency(ops, 'MANUFACTURE', product) / 100
+  const base = 1 + 0.01 * (ops || []).length + skillSum(ops, 'MANUFACTURE', product) / 100 + control.manufacture / 100 + combo / 100 + companion
   if (product === '作战记录') {
     const expPerRecord = level >= 3 ? 1000 : level >= 2 ? 400 : 200
     const hoursPerRecord = level >= 3 ? 3 : level >= 2 ? (80 / 60) : 0.75
@@ -400,7 +492,8 @@ function rateForManufacture(product, ops, control, combo, level) {
 }
 function rateForTrading(strategy, ops, control, combo, data, level) {
   const order = (data.facilities.formulas.orders || []).find((o) => o.strategy === strategy && o.level === Number(level)) || (data.facilities.formulas.orders || []).find((o) => o.strategy === strategy) || {}
-  const efficiency = 1 + 0.01 * (ops || []).length + skillSum(ops, 'TRADING', '') / 100 + control.trading / 100 + combo / 100
+  const companion = companionEfficiency(ops, 'TRADING', '') / 100
+  const efficiency = 1 + 0.01 * (ops || []).length + skillSum(ops, 'TRADING', '') / 100 + control.trading / 100 + combo / 100 + companion
   if (strategy === '开采协力') {
     const orundum = (order.orundum || 20) / (order.seconds || 7200) * 3600
     return { rate: orundum * efficiency, efficiency, demand: (order.shard || 2) / (order.seconds || 7200) * 3600 * efficiency }
@@ -499,7 +592,8 @@ function scoreQueues(queues, base, data, opts, mix) {
       const baseRate = Math.max(0.05, Number(options.baseRate != null ? options.baseRate : (1 - globalReduction)))
       const rates = list.map((op) => {
         const skill = (op.skills || []).find((x) => x.room === key) || op.skill
-        const moodMod = Number(skill?.mood || 0)
+        // 组合型心情效果（「当与 X 同站时心情消耗+0.3」）按阵容求值后再加到个人心情上
+        const moodMod = Number(skill?.mood || 0) + companionMoodDelta(op, list, key)
         return { charId: op.charId, rate: Math.min(2.5, Math.max(0, baseRate + moodMod)) }
       })
       perOp.push(...rates.map((r) => ({ ...r, key })))
